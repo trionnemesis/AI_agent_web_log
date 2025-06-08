@@ -32,7 +32,12 @@ logging.basicConfig(
 
 
 def main():
-    """尋找日誌檔並啟動處理流程"""
+    """
+    掃描目標目錄取得最新日誌，並將新增行送至本機 API 分析。
+
+    此函式不再直接處理分析邏輯，而是扮演 API 客戶端的角色，
+    定期收集日誌後呼叫 ``/analyze/logs`` 取得分析結果。
+    """
     log_paths: List[Path] = []
     if config.LMS_TARGET_LOG_DIR.exists() and config.LMS_TARGET_LOG_DIR.is_dir():
         # 收集目錄下所有支援的日誌檔，包含壓縮格式 (.gz、.bz2)。
@@ -53,7 +58,7 @@ def main():
         save_state(STATE)
         return
 
-    # Send lines to analysis API
+    # 將收集到的新日誌行打包成 JSON 並送至本地 FastAPI 服務
     try:
         resp = requests.post(
             "http://localhost:8000/analyze/logs", json={"logs": new_lines}

@@ -14,12 +14,27 @@ app = FastAPI()
 
 
 class Logs(BaseModel):
+    """Schema for a batch of log lines sent to the API."""
+
+    # Raw log lines that should be processed in order
     logs: List[str]
 
 
 @app.post("/analyze/logs")
 async def analyze_logs(payload: Logs):
-    """Analyze a batch of log lines and return results."""
+    """Analyze log lines and return structured analysis results.
+
+    Parameters
+    ----------
+    payload:
+        The :class:`Logs` object containing log lines from a client.
+
+    Returns
+    -------
+    list[dict]
+        A list of analysis results for each selected log line.
+    """
+
     return analyse_lines(payload.logs)
 
 

@@ -92,6 +92,11 @@ def process_logs(log_paths: List[Path]) -> List[Dict[str, Any]]:
 
 
 def process_log_lines(log_lines: List[str]) -> List[Dict[str, Any]]:
-    """Analyze already collected log lines."""
+    """Analyze log lines that have been collected elsewhere.
+
+    This helper is useful for external callers (e.g. a FastAPI route)
+    that already aggregated raw log strings and simply need the
+    structured analysis results returned by :func:`analyse_lines`.
+    """
 
     return analyse_lines(log_lines)

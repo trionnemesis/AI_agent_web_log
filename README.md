@@ -263,31 +263,42 @@ lms_log_analyzer/
 ┌────────────┐
 │ Log Source │   ← 來自 LMS 系統的 .log/.gz/.bz2 檔案
 └────┬───────┘
-│            
-▼             
+     │
+     ▼
 ┌──────────────┐
 │  Filebeat    │ ← 監控日誌並透過 HTTP 送出
 └────┬─────────┘
-│
-▼
+     │
+     ▼
+┌────────────┐
+│  main.py   │ ← 收集新行並 POST 至 API
+└────┬───────┘
+     │ HTTP
+     ▼
+┌──────────────┐
+│ FastAPI      │ ← `/analyze/logs`
+│ api_server.py│
+└────┬─────────┘
+     │
+     ▼
 ┌────────────┐
 │  Parser    │ ← 逐行讀取新日誌、解壓縮、處理編碼
 │ tail_since │
 └────┬───────┘
-│
-▼
+     │
+     ▼
 ┌──────────────┐
-│ Wazuh Filter │ ← 調用 Wazuh logtest 檢查是否產生告警
+│ Wazuh Filter │ ← 調用 Wazuh logtest 檢查告警
 │ filter_logs()│
 └────┬─────────┘
-│
-▼
+     │
+     ▼
 ┌──────────────┐
 │ Fast Scorer  │ ← 啟發式快速評分
 │ fast_score() │
 └────┬─────────┘
-│top X%
-▼
+     │top X%
+     ▼
 ┌────────────────────┐
 │ Vector Embedder     │ ← 用 sentence-transformers 或 SHA256 偽向量
 │ embed()             │
@@ -296,18 +307,18 @@ lms_log_analyzer/
 │                │ FAISS Vector Index │ ← 搜尋歷史相似模式
 │───────────────▶│ search(), add()    │
 └────────────────────┘
-▼
+     ▼
 ┌────────────────────┐
 │ Gemini LLM (Langchain) │ ← 分析是否為攻擊行為
 │ llm_analyse()          │
 └────────┬──────────────┘
-│
-▼
+         │
+         ▼
 ┌────────────────────┐
 │ Cache / Token Cost │ ← 避免重複分析 + 成本控制
 │ LRUCache / Tracker │
 └────────┬────────────┘
-▼
+         ▼
 ┌────────────────────┐
 │ Exporter            │ ← 將分析結果輸出為 JSON
 │ JSON / Log Report   │
