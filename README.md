@@ -15,7 +15,7 @@
 ## I. 系統架構 (概念流程)
 
 1. **Filebeat 近即時輸入：** Filebeat 監控日誌並將新行透過 HTTP 傳送至 `filebeat_server.py`，立即觸發後續分析。
-2. **FastAPI 服務：** 啟動 `api_server.py` 提供 `/analyze/logs` 端點。
+2. **FastAPI 服務：** 啟動 `api_server.py` 提供 `/analyze/logs` 與 `/investigate` 端點。
 3. **批次日誌處理：** `main.py` 會讀取新行並呼叫前述 API 取得分析結果。
 4. **Wazuh 告警比對：** 每行先送至 Wazuh `logtest` API，僅保留產生告警的項目並取得告警 JSON。
 5. **啟發式評分與取樣：** 對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
@@ -23,6 +23,7 @@
 7. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
 8. **結果輸出與成本控制：** 將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
 9. **標註資料累積：** 分析完的向量與 `is_attack` 等欄位會被追加至 `labeled_dataset.jsonl` 作為訓練資料。
+10. **互動式調查：** 透過 `/investigate` 端點輸入任一日誌，即可查詢歷史最相近的案例與當時的 LLM 分析結果。
 
 ---
 
@@ -278,7 +279,7 @@ lms_log_analyzer/
      │ HTTP
      ▼
 ┌──────────────┐
-│ FastAPI      │ ← `/analyze/logs`
+│ FastAPI      │ ← `/analyze/logs` / `/investigate`
 │ api_server.py│
 └────┬─────────┘
      │
