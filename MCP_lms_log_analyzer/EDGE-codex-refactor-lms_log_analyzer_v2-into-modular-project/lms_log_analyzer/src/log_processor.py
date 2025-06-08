@@ -89,3 +89,9 @@ def process_logs(log_paths: List[Path]) -> List[Dict[str, Any]]:
         all_new_lines.extend(tail_since(p))
 
     return analyse_lines(all_new_lines)
+
+
+def process_log_lines(log_lines: List[str]) -> List[Dict[str, Any]]:
+    """Analyze already collected log lines."""
+
+    return analyse_lines(log_lines)

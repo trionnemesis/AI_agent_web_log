@@ -4,3 +4,5 @@ langchain-core
 sentence-transformers
 google-api-python-client
 requests
+fastapi
+uvicorn

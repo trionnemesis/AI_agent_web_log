@@ -15,12 +15,13 @@
 ## I. 系統架構 (概念流程)
 
 1. **Filebeat 近即時輸入：** Filebeat 監控日誌並將新行透過 HTTP 傳送至 `filebeat_server.py`，立即觸發後續分析。
-2. **批次日誌處理：** 亦可定期執行 `main.py`，程式會根據 `data/file_state.json` 記錄的偏移量只讀取新增內容。
-3. **Wazuh 告警比對：** 每行先送至 Wazuh `logtest` API，僅保留產生告警的項目並取得告警 JSON。
-4. **啟發式評分與取樣：** 對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
-5. **向量嵌入與歷史比對：** 將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
-6. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
-7. **結果輸出與成本控制：** 將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
+2. **FastAPI 服務：** 啟動 `api_server.py` 提供 `/analyze/logs` 端點。
+3. **批次日誌處理：** `main.py` 會讀取新行並呼叫前述 API 取得分析結果。
+4. **Wazuh 告警比對：** 每行先送至 Wazuh `logtest` API，僅保留產生告警的項目並取得告警 JSON。
+5. **啟發式評分與取樣：** 對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
+6. **向量嵌入與歷史比對：** 將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
+7. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
+8. **結果輸出與成本控制：** 將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
 
 ---
 

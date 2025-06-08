@@ -10,10 +10,10 @@ import json
 from pathlib import Path
 from typing import List
 
+import requests
+
 from . import config
-from .src.log_processor import process_logs
-from .src.utils import logger, save_state, STATE
-from .src.vector_db import VECTOR_DB
+from .src.utils import logger, save_state, STATE, tail_since
 
 # 先行設定 logging，讓所有模組共用同一組 handler。
 # 預設輸出至終端機，若有權限則同時寫入檔案。
@@ -43,8 +43,26 @@ def main():
         logger.info(f"No log files found in {config.LMS_TARGET_LOG_DIR}")
         return
 
-    # 將實際處理交由 log_processor 模組
-    results = process_logs(log_paths)
+    # Collect new log lines
+    new_lines: List[str] = []
+    for p in log_paths:
+        new_lines.extend(tail_since(p))
+
+    if not new_lines:
+        logger.info("No new log lines to analyze")
+        save_state(STATE)
+        return
+
+    # Send lines to analysis API
+    try:
+        resp = requests.post(
+            "http://localhost:8000/analyze/logs", json={"logs": new_lines}
+        )
+        resp.raise_for_status()
+        results = resp.json()
+    except Exception as e:
+        logger.error(f"Failed to contact API: {e}")
+        results = []
     if results:
         # 有分析結果時將其輸出為 JSON 檔
         try:
@@ -53,9 +71,8 @@ def main():
         except PermissionError:
             logger.error(f"Cannot write analysis output to {config.LMS_ANALYSIS_OUTPUT_FILE}")
 
-    # 每次執行完畢都要儲存狀態與向量索引
+    # 每次執行完畢都要儲存狀態
     save_state(STATE)
-    VECTOR_DB.save()
 
 
 if __name__ == "__main__":
