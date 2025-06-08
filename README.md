@@ -197,7 +197,7 @@ lms_log_analyzer/
 
 ---
 
-VI. 系統功能與未來方向 (System Capabilities & Future Roadmap)
+## VI. 系統功能與未來方向 (System Capabilities & Future Roadmap)
 為了更清晰地呈現專案的成熟度，我們將原有的「未來可改進建議」拆分為「現已整合的核心功能」與「未來可行的擴充方向」。
 
 現已整合的核心功能 (Core Features Already Integrated)
