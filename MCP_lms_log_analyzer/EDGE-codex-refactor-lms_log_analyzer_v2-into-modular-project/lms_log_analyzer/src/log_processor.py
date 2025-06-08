@@ -62,6 +62,18 @@ def analyse_lines(lines: List[str]) -> List[Dict[str, Any]]:
             cases_to_add.append({"log": line, "analysis": analysis})
         VECTOR_DB.add(embeddings, cases_to_add)
 
+    # 將結果與對應向量存入標註資料集，以利後續模型優化
+    labeled_entries = [
+        {"log": line, "vector": vec, **(analysis or {})}
+        for line, vec, analysis in zip(top_lines, embeddings, analysis_results)
+    ]
+    try:
+        with open(config.LABELED_DATA_FILE, "a", encoding="utf-8") as f:
+            for item in labeled_entries:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    except Exception as e:  # pragma: no cover - optional
+        logger.error(f"Failed writing labeled dataset: {e}")
+
     exported: List[Dict[str, Any]] = []
     for (fast_s, item), analysis in zip(top_scored, analysis_results):
         entry: Dict[str, Any] = {

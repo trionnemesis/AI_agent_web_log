@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 import requests
 
 from .. import config
+from .utils import http_request_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,12 @@ def _authenticate() -> Optional[str]:
 
     url = f"{config.WAZUH_API_URL}/security/user/authenticate"
     try:
-        # 使用基本認證向 Wazuh 取得 token
-        resp = requests.get(
+        resp = http_request_with_retry(
+            "get",
             url,
             auth=(config.WAZUH_API_USER, config.WAZUH_API_PASSWORD),
             timeout=5,
         )
-        resp.raise_for_status()
         data = resp.json()
         return data.get("data", {}).get("token")
     except Exception as e:  # pragma: no cover - optional
@@ -53,14 +53,29 @@ def get_alert(line: str) -> Optional[Dict[str, any]]:
     url = f"{config.WAZUH_API_URL}/experimental/logtest"
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.post(url, headers=headers, json={"event": line}, timeout=5)
-        if resp.status_code == 401:
-            # token 失效時重新認證一次
+        resp = http_request_with_retry(
+            "post", url, headers=headers, json={"event": line}, timeout=5
+        )
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 401:
             _TOKEN = _authenticate()
             if _TOKEN:
                 headers["Authorization"] = f"Bearer {_TOKEN}"
-                resp = requests.post(url, headers=headers, json={"event": line}, timeout=5)
-        resp.raise_for_status()
+                try:
+                    resp = http_request_with_retry(
+                        "post", url, headers=headers, json={"event": line}, timeout=5
+                    )
+                except Exception as err:  # pragma: no cover - optional
+                    logger.error(f"Wazuh API error: {err}")
+                    return None
+        else:
+            logger.error(f"Wazuh API error: {e}")
+            return None
+    except Exception as e:  # pragma: no cover - optional
+        logger.error(f"Wazuh API error: {e}")
+        return None
+
+    try:
         data = resp.json()
         alerts = data.get("data", {}).get("alerts", [])
         if alerts:

@@ -22,6 +22,7 @@
 6. **向量嵌入與歷史比對：** 將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
 7. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
 8. **結果輸出與成本控制：** 將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
+9. **標註資料累積：** 分析完的向量與 `is_attack` 等欄位會被追加至 `labeled_dataset.jsonl` 作為訓練資料。
 
 ---
 
@@ -188,6 +189,7 @@ lms_log_analyzer/
 
 - `LMS_TARGET_LOG_DIR`：要掃描的日誌目錄。
 - `LMS_ANALYSIS_OUTPUT_FILE`：分析結果輸出的 JSON 路徑。
+- `LABELED_DATA_FILE`：累積已標註向量與分析結果的資料集路徑。
 - `CACHE_SIZE`、`SAMPLE_TOP_PERCENT`：控制快取大小與取樣比例。
 - `MAX_HOURLY_COST_USD`：每小時允許的 LLM 費用上限。
 - `GEMINI_API_KEY`：Gemini API 金鑰，可透過環境變數提供。
@@ -206,7 +208,7 @@ lms_log_analyzer/
 4. **更完善的多檔案與輪替日誌狀態管理 (State Management):**
     - 如果需要同時處理目錄中多個檔案或更精確地追蹤已處理的日誌段落（而不僅是依賴最新檔案和內部時間戳），可以考慮更複雜的狀態管理機制，例如記錄每個檔案的處理位元組偏移 (byte offset) 或 inode。
 5. **錯誤處理與健壯性 (Error Handling & Resilience):**
-    - 增強腳本的錯誤處理能力，例如增加 API 呼叫的重試機制。
+    - 現版已內建簡易的指數退避重試機制，避免暫時性 API 失敗造成流程中斷。
     - 對於無法預期的日誌格式或系統問題，提供更友好的錯誤回饋和恢復能力。
 6. **外部化設定管理 (Configuration Management):**
     - 將所有可配置參數（如 API 金鑰、路徑、閾值等）移至外部設定檔 (如 YAML, JSON, `.env` 檔案)，而不是直接寫在腳本中，方便管理和部署。

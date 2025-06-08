@@ -13,7 +13,7 @@ from typing import List
 import requests
 
 from . import config
-from .src.utils import logger, save_state, STATE, tail_since
+from .src.utils import logger, save_state, STATE, tail_since, http_request_with_retry
 
 # 先行設定 logging，讓所有模組共用同一組 handler。
 # 預設輸出至終端機，若有權限則同時寫入檔案。
@@ -60,10 +60,9 @@ def main():
 
     # 將收集到的新日誌行打包成 JSON 並送至本地 FastAPI 服務
     try:
-        resp = requests.post(
-            "http://localhost:8000/analyze/logs", json={"logs": new_lines}
+        resp = http_request_with_retry(
+            "post", "http://localhost:8000/analyze/logs", json={"logs": new_lines}
         )
-        resp.raise_for_status()
         results = resp.json()
     except Exception as e:
         logger.error(f"Failed to contact API: {e}")

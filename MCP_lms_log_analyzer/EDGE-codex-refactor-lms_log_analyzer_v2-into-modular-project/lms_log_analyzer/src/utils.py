@@ -6,9 +6,12 @@ import gzip
 import io
 import json
 import logging
+import time
 from pathlib import Path
 from collections import OrderedDict
 from typing import Any, Dict, List
+
+import requests
 
 from .. import config
 
@@ -120,5 +123,50 @@ def tail_since(path: Path) -> List[str]:
         return []
 
     # 更新偏移量，後續執行只讀取新增資料
-    STATE[file_key] = stored
+STATE[file_key] = stored
     return new_lines
+
+
+def http_request_with_retry(
+    method: str,
+    url: str,
+    *,
+    max_attempts: int = 3,
+    backoff_factor: float = 1.0,
+    **kwargs,
+) -> requests.Response:
+    """Perform an HTTP request with exponential backoff.
+
+    Parameters
+    ----------
+    method:
+        HTTP method name such as ``"get"`` or ``"post"``.
+    url:
+        Target URL.
+    max_attempts:
+        Maximum number of attempts before giving up.
+    backoff_factor:
+        Base delay (in seconds) used for exponential backoff.
+    kwargs:
+        Passed directly to :func:`requests.request`.
+
+    Returns
+    -------
+    requests.Response
+        The successful response object.
+    """
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.request(method, url, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except Exception as exc:  # pragma: no cover - optional
+            if attempt == max_attempts:
+                raise
+            wait = backoff_factor * (2** (attempt - 1))
+            logger.warning(
+                f"Request failed (attempt {attempt}/{max_attempts}): {exc}; retrying in {wait}s"
+            )
+            time.sleep(wait)
+
