@@ -197,41 +197,50 @@ lms_log_analyzer/
 
 ---
 
-## VI. 未來可改進建議
+VI. 系統功能與未來方向 (System Capabilities & Future Roadmap)
+為了更清晰地呈現專案的成熟度，我們將原有的「未來可改進建議」拆分為「現已整合的核心功能」與「未來可行的擴充方向」。
 
-1. **增強型日誌解析 (Enhanced Log Parsing):**
-    - 對於更複雜或多樣的日誌格式，可以考慮使用更強大的日誌解析函式庫，如 `python-grok`。
-2. **真實向量搜尋與嵌入 (Advanced Vector Search):**
-    - 整合真正的向量資料庫 (如 FAISS, Milvus, Pinecone, Qdrant 等)。
-    - 使用文本嵌入模型 (如 Google 的 `text-embedding-004` 模型，或開源的 Sentence Transformers) 將日誌條目轉換為向量，以實現更精確的攻擊模式和正常模式比對。
-3. **支援壓縮日誌處理 (Compressed Log Handling):**
-    - 增加讀取和即時解壓縮已壓縮日誌檔案 (如 `.gz`, `.bz2`) 的功能，以便分析歷史歸檔日誌。
-4. **更完善的多檔案與輪替日誌狀態管理 (State Management):**
-    - 如果需要同時處理目錄中多個檔案或更精確地追蹤已處理的日誌段落（而不僅是依賴最新檔案和內部時間戳），可以考慮更複雜的狀態管理機制，例如記錄每個檔案的處理位元組偏移 (byte offset) 或 inode。
-5. **錯誤處理與健壯性 (Error Handling & Resilience):**
-    - 現版已內建簡易的指數退避重試機制，避免暫時性 API 失敗造成流程中斷。
-    - 對於無法預期的日誌格式或系統問題，提供更友好的錯誤回饋和恢復能力。
-6. **外部化設定管理 (Configuration Management):**
-    - 將所有可配置參數（如 API 金鑰、路徑、閾值等）移至外部設定檔 (如 YAML, JSON, `.env` 檔案)，而不是直接寫在腳本中，方便管理和部署。
-7. **近即時處理 (Near Real-time Processing):**
-    - 若需更頻繁的分析，可以調整 cron job 的執行頻率。
-    - 考慮與日誌收集/串流解決方案 (如 Filebeat, Fluentd, Kafka) 整合，以實現更接近即時的日誌分析。
-8. **進階告警整合 (Advanced Alerting):**
-    - 除了模擬郵件，可以整合更專業的告警平台，如 PagerDuty, Slack, Opsgenie, Microsoft Teams 等，以便告警能更有效地觸達相關人員。
-9. **安全性強化 (Security Enhancements):**
-    - 對於生產環境，API 金鑰應使用更安全的儲存方式，如 HashiCorp Vault, Google Cloud Secret Manager, AWS Secrets Manager 等，而不是僅依賴環境變數或腳本內提示。
-10. **LLM 成本優化 (Cost Optimization for LLM):**
-    - 實現更精細的成本追蹤。
-    - 開發可疑日誌的自適應取樣策略 (例如，只將最可疑的 N% 日誌送往 LLM)。
-    - 為相似的查詢實作快取機制，避免重複呼叫 LLM。
-11. **LLM 批次處理 (Batch Processing for LLM):**
-    - 如果一次發現大量可疑日誌，研究 Gemini API 是否支援或能從批次請求中受益，以減少 API 呼叫的總體開銷。
-12. **Web UI/儀表板 (Web UI/Dashboard):**
-    - 開發一個簡單的 Web 介面，用於查看告警、統計數據、Token 使用情況，甚至管理部分設定。
-13. **單元測試與整合測試 (Unit & Integration Testing):**
-    - 為腳本的關鍵部分編寫單元測試和整合測試，以確保程式碼的品質、可靠性，並在未來修改時能快速發現潛在問題。
-14. **日誌輪替感知 (Log Rotation Awareness):**
-    - 雖然目前選擇最新 `.log` 檔案的方式能應對部分輪替，但可以設計更明確的邏輯來識別和處理日誌輪替事件，確保數據的連續性。
+現已整合的核心功能 (Core Features Already Integrated)
+本專案已經從概念驗證發展為一個功能較為完善的系統，許多初期的改進建議已被實作：
+
+真實向量搜尋與嵌入 (Advanced Vector Search):
+
+系統已整合 FAISS (faiss-cpu) 進行高效的相似性搜尋，並使用 Sentence Transformers 模型將日誌轉換為高維度向量，實現了比對攻擊與正常模式的語義搜尋能力。
+LLM 成本優化與批次處理 (LLM Cost Optimization & Batching):
+
+透過 LRU 快取機制避免重複分析相同的日誌。
+內建成本追蹤器與每小時費用上限，有效控管 API 支出。
+採用批次處理 (Batch Processing) 將多個請求一次性發送給 LLM，提升處理效率。
+日誌處理與狀態管理 (Log Handling & State Management):
+
+原生支援壓縮日誌 (.gz, .bz2) 的讀取與即時解壓縮。
+具備日誌輪替感知 (Log Rotation Awareness) 功能，透過追蹤檔案的 inode 和位元組偏移 (offset) 來確保日誌處理的連續性，避免資料遺漏或重複處理。
+架構與部署 (Architecture & Deployment):
+
+已實現設定外部化，所有參數皆可透過環境變數在 config.py 中覆寫，無需修改程式碼。
+整合 Filebeat，提供 filebeat_server.py 以接收日誌串流，達成近即時處理。
+包含單元測試與整合測試，確保程式碼品質與可靠性。
+未來可行的擴充方向 (Potential Future Extensions)
+基於穩固的現有功能，未來可以朝以下方向進行擴充：
+
+增強型日誌解析 (Enhanced Log Parsing):
+
+針對格式更複雜或多樣的日誌，可引入 python-grok 等函式庫，取代現有的自訂解析邏輯，以更結構化、更可靠的方式提取日誌欄位。
+進階告警與整合 (Advanced Alerting & Integration):
+
+將分析結果對接到專業的告警平台，如 Slack, PagerDuty, 或 Microsoft Teams，以便告警能更即時、有效地觸達維運團隊。
+安全性強化 (Security Hardening):
+
+在生產環境中，將 API 金鑰等敏感資訊從環境變數移至更安全的儲存體，例如 HashiCorp Vault, Google Cloud Secret Manager, 或 AWS Secrets Manager。
+Web UI/儀表板 (Web UI/Dashboard):
+
+基於現有的 FastAPI 後端，開發一個簡單的 Web 介面，用於視覺化呈現告警趨勢、查詢歷史分析結果、查看 Token 使用統計等，提升系統的易用性。
+建立回饋迴圈與自適應模型 (Feedback Loop & Adaptive Models):
+
+將 LLM 的分析結果作為標籤，建立一個持續增長的已標註資料集。利用此資料集定期微調（Fine-tune）嵌入模型或訓練一個輕量級的本地端分類器，讓系統能夠自我學習，變得更懂特定環境的攻擊模式。
+多源日誌關聯分析 (Multi-source Log Correlation):
+
+擴充系統以接收多種日誌來源（如：防火牆、資料庫、應用程式），並在偵測到可疑活動時，自動關聯分析來自不同來源但在同一時間窗口內的相關日誌，以拼湊出完整的攻擊鏈。
 
 ---
 
