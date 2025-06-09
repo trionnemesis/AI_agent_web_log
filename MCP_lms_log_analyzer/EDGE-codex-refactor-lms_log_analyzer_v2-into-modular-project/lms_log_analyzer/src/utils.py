@@ -123,7 +123,7 @@ def tail_since(path: Path) -> List[str]:
         return []
 
     # 更新偏移量，後續執行只讀取新增資料
-STATE[file_key] = stored
+    STATE[file_key] = stored
     return new_lines
 
 
