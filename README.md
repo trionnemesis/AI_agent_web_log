@@ -235,6 +235,19 @@ LLM 成本優化與批次處理 (LLM Cost Optimization & Batching):
 Web UI/儀表板 (Web UI/Dashboard):
 
 基於現有的 FastAPI 後端，開發一個簡單的 Web 介面，用於視覺化呈現告警趨勢、查詢歷史分析結果、查看 Token 使用統計等，提升系統的易用性。
+## VIII. 持續整合與測試 (CI)
+
+本專案已加入 GitHub Actions 工作流程 `.github/workflows/python.yml`，
+在推送或提出 Pull Request 時會自動安裝依賴並執行 `pytest`。
+
+若要在本地端手動測試，可於專案根目錄下執行：
+
+```bash
+cd MCP_lms_log_analyzer/EDGE-codex-refactor-lms_log_analyzer_v2-into-modular-project
+pip install -r lms_log_analyzer/requirements.txt
+pytest -q tests
+```
+
 建立回饋迴圈與自適應模型 (Feedback Loop & Adaptive Models):
 
 將 LLM 的分析結果作為標籤，建立一個持續增長的已標註資料集。利用此資料集定期微調（Fine-tune）嵌入模型或訓練一個輕量級的本地端分類器，讓系統能夠自我學習，變得更懂特定環境的攻擊模式。
