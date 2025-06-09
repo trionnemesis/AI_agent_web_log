@@ -200,40 +200,42 @@ lms_log_analyzer/
 ## VI. 系統功能與未來方向 (System Capabilities & Future Roadmap)
 為了更清晰地呈現專案的成熟度，我們將原有的「未來可改進建議」拆分為「現已整合的核心功能」與「未來可行的擴充方向」。
 
-現已整合的核心功能 (Core Features Already Integrated)
+1.現已整合的核心功能 (Core Features Already Integrated)
 本專案已經從概念驗證發展為一個功能較為完善的系統，許多初期的改進建議已被實作：
 
-真實向量搜尋與嵌入 (Advanced Vector Search):
+2.真實向量搜尋與嵌入 (Advanced Vector Search):
 
-系統已整合 FAISS (faiss-cpu) 進行高效的相似性搜尋，並使用 Sentence Transformers 模型將日誌轉換為高維度向量，實現了比對攻擊與正常模式的語義搜尋能力。
+3.系統已整合 FAISS (faiss-cpu) 進行高效的相似性搜尋，並使用 Sentence Transformers 模型將日誌轉換為高維度向量，實現了比對攻擊與正常模式的語義搜尋能力。
 LLM 成本優化與批次處理 (LLM Cost Optimization & Batching):
 
-透過 LRU 快取機制避免重複分析相同的日誌。
+4.透過 LRU 快取機制避免重複分析相同的日誌。
 內建成本追蹤器與每小時費用上限，有效控管 API 支出。
 採用批次處理 (Batch Processing) 將多個請求一次性發送給 LLM，提升處理效率。
 日誌處理與狀態管理 (Log Handling & State Management):
 
-原生支援壓縮日誌 (.gz, .bz2) 的讀取與即時解壓縮。
+5.原生支援壓縮日誌 (.gz, .bz2) 的讀取與即時解壓縮。
 具備日誌輪替感知 (Log Rotation Awareness) 功能，透過追蹤檔案的 inode 和位元組偏移 (offset) 來確保日誌處理的連續性，避免資料遺漏或重複處理。
 架構與部署 (Architecture & Deployment):
 
-已實現設定外部化，所有參數皆可透過環境變數在 config.py 中覆寫，無需修改程式碼。
+6.已實現設定外部化，所有參數皆可透過環境變數在 config.py 中覆寫，無需修改程式碼。
 整合 Filebeat，提供 filebeat_server.py 以接收日誌串流，達成近即時處理。
 包含單元測試與整合測試，確保程式碼品質與可靠性。
 未來可行的擴充方向 (Potential Future Extensions)
+
+
 基於穩固的現有功能，未來可以朝以下方向進行擴充：
 
-增強型日誌解析 (Enhanced Log Parsing):
+1.增強型日誌解析 (Enhanced Log Parsing):
 
-針對格式更複雜或多樣的日誌，可引入 python-grok 等函式庫，取代現有的自訂解析邏輯，以更結構化、更可靠的方式提取日誌欄位。
+2.針對格式更複雜或多樣的日誌，可引入 python-grok 等函式庫，取代現有的自訂解析邏輯，以更結構化、更可靠的方式提取日誌欄位。
 進階告警與整合 (Advanced Alerting & Integration):
 
-將分析結果對接到專業的告警平台，如 Slack, PagerDuty, 或 Microsoft Teams，以便告警能更即時、有效地觸達維運團隊。
+3.將分析結果對接到專業的告警平台，如 Slack, PagerDuty, 或 Microsoft Teams，以便告警能更即時、有效地觸達維運團隊。
 安全性強化 (Security Hardening):
 
-在生產環境中，將 API 金鑰等敏感資訊從環境變數移至更安全的儲存體，例如 HashiCorp Vault, Google Cloud Secret Manager, 或 AWS Secrets Manager。
-Web UI/儀表板 (Web UI/Dashboard):
+4.在生產環境中，將 API 金鑰等敏感資訊從環境變數移至更安全的儲存體，例如 HashiCorp Vault, Google Cloud Secret Manager, 或 AWS Secrets Manager。
 
+5.Web UI/儀表板 (Web UI/Dashboard) 暫時定案是opensearch:
 基於現有的 FastAPI 後端，開發一個簡單的 Web 介面，用於視覺化呈現告警趨勢、查詢歷史分析結果、查看 Token 使用統計等，提升系統的易用性。
 ## VIII. 持續整合與測試 (CI)
 
