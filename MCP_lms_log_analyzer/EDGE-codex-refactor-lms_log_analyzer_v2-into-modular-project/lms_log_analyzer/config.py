@@ -45,6 +45,14 @@ WAZUH_API_USER = os.getenv("WAZUH_API_USER")
 WAZUH_API_PASSWORD = os.getenv("WAZUH_API_PASSWORD")
 WAZUH_ENABLED = bool(WAZUH_API_URL and WAZUH_API_USER and WAZUH_API_PASSWORD)
 
+# Neo4j connection settings (optional)
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "test1234")
+
+# OpenSearch URL for indexing results
+OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
+
 # Filebeat HTTP 伺服器設定
 FILEBEAT_HOST = os.getenv("FILEBEAT_HOST", "0.0.0.0")
 FILEBEAT_PORT = int(os.getenv("FILEBEAT_PORT", 9000))

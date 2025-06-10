@@ -27,7 +27,9 @@
 ```mermaid
 flowchart TD
     A(Log Source\n*.log *.gz *.bz2) --> B(Filebeat)
+    A --> M(main.py)
     B -->|HTTP| C(filebeat_server.py)
+    M -->|HTTP POST| C(api_server.py)
     C --> D(log_processor.py)
     D --> E(Wazuh logtest)
     E --> F(fast_score)
@@ -41,7 +43,9 @@ flowchart TD
 
 1. **Filebeat 近即時輸入**：監控日誌並經 HTTP 推送至 `filebeat_server.py`。
 2. **FastAPI 服務**：`api_server.py` 暴露 `/analyze/logs` 與 `/investigate` 端點。
-3. **批次／串流處理**：`main.py` (批次) 或 `filebeat_server.py` (串流) 將日誌行傳入 `log_processor.py`。
+3. **批次／串流處理**：`main.py` (批次) 會蒐集新日誌後透過 HTTP POST
+   `/analyze/logs` 傳入 `api_server.py`；`filebeat_server.py` (串流) 亦將收到的
+   日誌行傳遞給 `log_processor.py`。
 4. **Wazuh 告警比對**：調用 Wazuh `logtest` 只保留產生告警之行。
 5. **啟發式評分**：`fast_score()` 計算危險係數並取前 `SAMPLE_TOP_PERCENT` % 作候選。
 6. **向量搜尋**：句向量嵌入 → FAISS 搜尋歷史相似案例。
@@ -76,7 +80,7 @@ lms_log_analyzer/
 │   ├── graph_builder.py         # ▶ Neo4j 實體‧關係寫入      ← **新模組**
 │   ├── opensearch_writer.py     # ▶ OpenSearch Exporter       ← **新模組**
 │   └── utils.py                 # 共用工具 (HTTP retry、快取…)
-├── data/                        # 向量索引、狀態檔、標註資料
+├── data/                        # 向量索引、狀態檔、標註資料 (含 `labeled_dataset.jsonl`)
 ├── logs/                        # 系統運行 Log
 └── tests/                       # PyTest 單元／整合測試
 ```
