@@ -1,8 +1,5 @@
 from __future__ import annotations
-"""Wazuh 告警消費者
 
-從檔案或 HTTP 端點讀取 Wazuh 告警，是正式環境推薦的
-資料來源方式。`wazuh_api.py` 只提供臨時 logtest 用途。
 """
 
 import json

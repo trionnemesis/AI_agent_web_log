@@ -1,8 +1,5 @@
 from __future__ import annotations
-"""Wazuh API 工具模組
 
-提供簡易的 Wazuh `logtest` 包裝，方便臨時檢查單行日誌，
-並**不**在主要批次流程中使用。
 """
 
 import logging
