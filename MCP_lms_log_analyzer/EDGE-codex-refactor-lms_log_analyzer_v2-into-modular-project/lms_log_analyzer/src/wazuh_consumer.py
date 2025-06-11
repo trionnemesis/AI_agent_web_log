@@ -74,10 +74,16 @@ def get_alerts_for_lines(lines: List[str]) -> List[Dict[str, Any]]:
     alerts.extend(_read_from_http())
     if not alerts:
         return []
-    lines_set = set(lines)
-    matched = []
+
+    alert_map: Dict[str, List[Dict[str, Any]]] = {}
     for alert in alerts:
         original = alert.get("full_log") or alert.get("original_log")
-        if original and original in lines_set:
-            matched.append({"line": original, "alert": alert})
+        if not original:
+            continue
+        alert_map.setdefault(original, []).append(alert)
+
+    matched = []
+    for line in lines:
+        for alert in alert_map.get(line, []):
+            matched.append({"line": line, "alert": alert})
     return matched
