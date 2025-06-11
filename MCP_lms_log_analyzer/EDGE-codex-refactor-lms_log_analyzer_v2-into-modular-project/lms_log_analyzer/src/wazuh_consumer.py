@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Read Wazuh alerts from a dedicated file or HTTP endpoint."""
+"""從預先產生的檔案或 HTTP 端點讀取 Wazuh 告警"""
 
 import json
 import logging
@@ -8,15 +8,17 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from .utils import retry_with_backoff
+
 from .. import config
 
 logger = logging.getLogger(__name__)
 
-# Track last read position for file source
+# 紀錄檔案來源的讀取位置
 _FILE_OFFSET = 0
 
 def _read_from_file() -> List[Dict[str, Any]]:
-    """Read new alerts from configured file."""
+    """自設定的檔案讀取新增的告警"""
     path_str = config.WAZUH_ALERTS_FILE
     if not path_str:
         return []
@@ -34,17 +36,17 @@ def _read_from_file() -> List[Dict[str, Any]]:
             try:
                 alerts.append(json.loads(line))
             except json.JSONDecodeError:
-                logger.error("Invalid JSON alert line: %s", line)
+                logger.error("無法解析的告警 JSON：%s", line)
         _FILE_OFFSET = f.tell()
     return alerts
 
 def _read_from_http() -> List[Dict[str, Any]]:
-    """Fetch alerts from HTTP endpoint returning JSON list."""
+    """從 HTTP 端點取得告警 (應回傳 JSON 陣列)"""
     url = config.WAZUH_ALERTS_URL
     if not url:
         return []
     try:
-        resp = requests.get(url, timeout=5)
+        resp = retry_with_backoff(requests.get, url, timeout=5)
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, list):
@@ -53,11 +55,11 @@ def _read_from_http() -> List[Dict[str, Any]]:
             return data.get("alerts", [])
         return []
     except Exception as exc:  # pragma: no cover - optional network failure
-        logger.error("Failed to fetch alerts from %s: %s", url, exc)
+        logger.error("無法自 %s 取得告警: %s", url, exc)
         return []
 
 def get_alerts_for_lines(lines: List[str]) -> List[Dict[str, Any]]:
-    """Return alerts whose original log is among provided lines."""
+    """比對並回傳與指定日誌行相符的告警"""
     if not lines:
         return []
     alerts = []

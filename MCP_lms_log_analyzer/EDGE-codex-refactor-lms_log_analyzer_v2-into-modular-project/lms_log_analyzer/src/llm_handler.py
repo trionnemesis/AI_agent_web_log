@@ -182,7 +182,11 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
         for start in range(0, len(batch_inputs), config.BATCH_SIZE):
             chunk = batch_inputs[start : start + config.BATCH_SIZE]
             chunk_indices = indices_to_query[start : start + config.BATCH_SIZE]
-            responses = LLM_CHAIN.batch(chunk, config={"max_concurrency": 5})  # type: ignore
+            responses = retry_with_backoff(
+                LLM_CHAIN.batch,
+                chunk,
+                config={"max_concurrency": 5},
+            )  # type: ignore
             for i, resp in enumerate(responses):
                 orig_idx = chunk_indices[i]
                 text = resp.content if hasattr(resp, "content") else resp
