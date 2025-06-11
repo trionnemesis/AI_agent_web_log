@@ -8,7 +8,8 @@ import json
 import logging
 from pathlib import Path
 from collections import OrderedDict
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, TypeVar
+from time import sleep
 
 from .. import config
 
@@ -72,6 +73,36 @@ class LRUCache(OrderedDict):
 
 
 CACHE = LRUCache(config.CACHE_SIZE)
+
+
+T = TypeVar("T")
+
+
+def retry_with_backoff(
+    func: Callable[..., T],
+    *args: Any,
+    retries: int = config.RETRY_MAX_ATTEMPTS,
+    initial_delay: float = config.RETRY_INITIAL_DELAY,
+    backoff: float = config.RETRY_BACKOFF_FACTOR,
+    max_delay: float = config.RETRY_MAX_DELAY,
+    **kwargs: Any,
+) -> T:
+    """Run ``func`` with retries using exponential backoff."""
+
+    attempt = 0
+    delay = initial_delay
+    while True:
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            attempt += 1
+            if attempt >= retries:
+                raise
+            logger.warning(
+                f"{func.__name__} failed; retry {attempt}/{retries} in {delay}s"
+            )
+            sleep(delay)
+            delay = min(delay * backoff, max_delay)
 
 
 def open_log(path: Path) -> io.BufferedReader:
