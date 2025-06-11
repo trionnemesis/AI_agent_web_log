@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 
 import requests
 
+from .utils import retry_with_backoff
+
 from .. import config
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,8 @@ def _authenticate() -> Optional[str]:
     url = f"{config.WAZUH_API_URL}/security/user/authenticate"
     try:
         # 使用基本認證向 Wazuh 取得 token
-        resp = requests.get(
+        resp = retry_with_backoff(
+            requests.get,
             url,
             auth=(config.WAZUH_API_USER, config.WAZUH_API_PASSWORD),
             timeout=5,
@@ -53,13 +56,25 @@ def get_alert(line: str) -> Optional[Dict[str, any]]:
     url = f"{config.WAZUH_API_URL}/experimental/logtest"
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.post(url, headers=headers, json={"event": line}, timeout=5)
+        resp = retry_with_backoff(
+            requests.post,
+            url,
+            headers=headers,
+            json={"event": line},
+            timeout=5,
+        )
         if resp.status_code == 401:
             # token 失效時重新認證一次
             _TOKEN = _authenticate()
             if _TOKEN:
                 headers["Authorization"] = f"Bearer {_TOKEN}"
-                resp = requests.post(url, headers=headers, json={"event": line}, timeout=5)
+                resp = retry_with_backoff(
+                    requests.post,
+                    url,
+                    headers=headers,
+                    json={"event": line},
+                    timeout=5,
+                )
         resp.raise_for_status()
         data = resp.json()
         alerts = data.get("data", {}).get("alerts", [])

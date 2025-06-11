@@ -11,7 +11,7 @@ from . import log_parser
 from .llm_handler import llm_analyse, COST_TRACKER
 from .vector_db import VECTOR_DB, embed
 from .utils import tail_since, save_state, STATE
-from .wazuh_api import filter_logs
+from .wazuh_consumer import get_alerts_for_lines
 
 # 模組層級記錄器，供其他函式使用
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def analyse_lines(lines: List[str]) -> List[Dict[str, Any]]:
     if not lines:
         return []
 
-    alerts = filter_logs(lines)
+    alerts = get_alerts_for_lines(lines)
     if not alerts:
         save_state(STATE)
         VECTOR_DB.save()

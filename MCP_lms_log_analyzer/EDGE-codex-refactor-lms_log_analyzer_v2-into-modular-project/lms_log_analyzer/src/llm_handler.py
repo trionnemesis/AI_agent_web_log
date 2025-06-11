@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 """LLM 互動工具
@@ -10,7 +11,7 @@ from typing import Any, Dict, List, Optional
  呼叫。"""
 
 from .. import config
-from .utils import CACHE
+from .utils import CACHE, retry_with_backoff
 
 try:
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -74,9 +75,21 @@ class LLMCostTracker:
         self.total_in_tokens = 0
         self.total_out_tokens = 0
         self.total_cost = 0.0
+        # 紀錄目前小時段起始時間
+        self.hour_start_ts = time.time()
+
+    def _maybe_reset_hour(self) -> None:
+        """若已跨過一小時則重置統計"""
+        if time.time() - self.hour_start_ts >= 3600:
+            self.in_tokens_hourly = 0
+            self.out_tokens_hourly = 0
+            self.cost_hourly = 0.0
+            self.hour_start_ts = time.time()
 
     def add_usage(self, in_tok: int, out_tok: int):
         """記錄一次呼叫的 Token 數量"""
+
+        self._maybe_reset_hour()
 
         self.in_tokens_hourly += in_tok
         self.out_tokens_hourly += out_tok
@@ -91,7 +104,18 @@ class LLMCostTracker:
 
     def get_hourly_cost(self) -> float:
         """取得本小時累積費用"""
+        self._maybe_reset_hour()
         return self.cost_hourly
+
+    def get_current_hour_stats(self) -> Dict[str, Any]:
+        """取得當前小時統計資料"""
+        self._maybe_reset_hour()
+        return {
+            "hour_start": self.hour_start_ts,
+            "input_tokens": self.in_tokens_hourly,
+            "output_tokens": self.out_tokens_hourly,
+            "cost_usd": self.cost_hourly,
+        }
 
     def get_total_stats(self) -> dict:
         """回傳跨執行期間的總體使用統計"""
@@ -152,7 +176,7 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
         return results
 
     try:
-        # 依設定的 BATCH_SIZE 分批送出請求
+
         total_in = 0
         total_out = 0
         for start in range(0, len(batch_inputs), config.BATCH_SIZE):
