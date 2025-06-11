@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
  呼叫。"""
 
 from .. import config
-from .utils import CACHE
+from .utils import CACHE, retry_with_backoff
 
 try:
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -153,7 +153,10 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
 
     try:
         # 一次批次送出請求，並限制最大並行數
-        responses = LLM_CHAIN.batch(batch_inputs, config={"max_concurrency": 5})  # type: ignore
+        def do_batch():
+            return LLM_CHAIN.batch(batch_inputs, config={"max_concurrency": 5})  # type: ignore
+
+        responses = retry_with_backoff(do_batch)
         total_in = 0
         total_out = 0
         for i, resp in enumerate(responses):
