@@ -188,6 +188,7 @@ lms_log_analyzer/
 - `LMS_TARGET_LOG_DIR`：要掃描的日誌目錄。
 - `LMS_ANALYSIS_OUTPUT_FILE`：分析結果輸出的 JSON 路徑。
 - `CACHE_SIZE`、`SAMPLE_TOP_PERCENT`：控制快取大小與取樣比例。
+- `BATCH_SIZE`：LLM 一次處理的告警筆數，可透過 `LMS_LLM_BATCH_SIZE` 設定。
 - `MAX_HOURLY_COST_USD`：每小時允許的 LLM 費用上限。
 - `GEMINI_API_KEY`：Gemini API 金鑰，可透過環境變數提供。
 

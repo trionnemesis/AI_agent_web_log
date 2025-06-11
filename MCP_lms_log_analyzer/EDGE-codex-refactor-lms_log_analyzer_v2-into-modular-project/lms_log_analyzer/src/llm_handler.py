@@ -152,34 +152,37 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
         return results
 
     try:
-        # 一次批次送出請求，並限制最大並行數
-        responses = LLM_CHAIN.batch(batch_inputs, config={"max_concurrency": 5})  # type: ignore
+        # 依設定的 BATCH_SIZE 分批送出請求
         total_in = 0
         total_out = 0
-        for i, resp in enumerate(responses):
-            orig_idx = indices_to_query[i]
-            text = resp.content if hasattr(resp, "content") else resp
-            item = alerts[orig_idx]
-            alert = item.get("alert", item)
-            examples = item.get("examples", [])
-            alert_json = json.dumps(alert, ensure_ascii=False, sort_keys=True)
-            examples_json = json.dumps(examples, ensure_ascii=False, sort_keys=True)
-            cache_key = alert_json + "|" + examples_json
-            try:
-                parsed = json.loads(text)
-                # 成功解析則寫入結果並更新快取
-                results[orig_idx] = parsed
-                CACHE.put(cache_key, parsed)
-                total_in += len(PROMPT.format(alert_json=alert_json, examples_json=examples_json).split())  # type: ignore
-                total_out += len(text.split())
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed parsing LLM response: {e}")
-                results[orig_idx] = {
-                    "is_attack": True,
-                    "attack_type": "LLM Parse Error",
-                    "reason": str(e),
-                    "severity": "Medium",
-                }
+        for start in range(0, len(batch_inputs), config.BATCH_SIZE):
+            chunk = batch_inputs[start : start + config.BATCH_SIZE]
+            chunk_indices = indices_to_query[start : start + config.BATCH_SIZE]
+            responses = LLM_CHAIN.batch(chunk, config={"max_concurrency": 5})  # type: ignore
+            for i, resp in enumerate(responses):
+                orig_idx = chunk_indices[i]
+                text = resp.content if hasattr(resp, "content") else resp
+                item = alerts[orig_idx]
+                alert = item.get("alert", item)
+                examples = item.get("examples", [])
+                alert_json = json.dumps(alert, ensure_ascii=False, sort_keys=True)
+                examples_json = json.dumps(examples, ensure_ascii=False, sort_keys=True)
+                cache_key = alert_json + "|" + examples_json
+                try:
+                    parsed = json.loads(text)
+                    # 成功解析則寫入結果並更新快取
+                    results[orig_idx] = parsed
+                    CACHE.put(cache_key, parsed)
+                    total_in += len(PROMPT.format(alert_json=alert_json, examples_json=examples_json).split())  # type: ignore
+                    total_out += len(text.split())
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed parsing LLM response: {e}")
+                    results[orig_idx] = {
+                        "is_attack": True,
+                        "attack_type": "LLM Parse Error",
+                        "reason": str(e),
+                        "severity": "Medium",
+                    }
         # 紀錄本次批次的 Token 使用量
         COST_TRACKER.add_usage(total_in, total_out)
     except Exception as e:  # pragma: no cover - optional
