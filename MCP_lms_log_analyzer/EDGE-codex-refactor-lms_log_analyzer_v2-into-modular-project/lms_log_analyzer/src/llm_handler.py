@@ -129,6 +129,32 @@ class LLMCostTracker:
 COST_TRACKER = LLMCostTracker()
 
 
+def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
+    """只保留與規則相關的核心欄位，減少傳入 LLM 的資料量"""
+
+    rule = alert.get("rule", {})
+    return {
+        "rule": {
+            "id": rule.get("id"),
+            "description": rule.get("description"),
+        },
+        "full_log": alert.get("full_log") or alert.get("original_log"),
+    }
+
+
+def _summarize_examples(examples: List[Dict[str, Any]]) -> List[str]:
+    """將歷史案例壓縮成單行摘要"""
+
+    summaries = []
+    for ex in examples:
+        log = str(ex.get("log", "")).replace("\n", " ")
+        analysis = ex.get("analysis", {})
+        attack_type = analysis.get("attack_type", "")
+        reason = analysis.get("reason", "")
+        summaries.append(f"{log} | {attack_type} | {reason}".strip())
+    return summaries
+
+
 def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
     """使用 LLM 分析告警並回傳 JSON 結果
 
@@ -146,8 +172,8 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
     batch_inputs: List[Dict[str, str]] = []
 
     for idx, item in enumerate(alerts):
-        alert = item.get("alert", item)
-        examples = item.get("examples", [])
+        alert = _trim_alert(item.get("alert", item))
+        examples = _summarize_examples(item.get("examples", []))
         alert_json = json.dumps(alert, ensure_ascii=False, sort_keys=True)
         examples_json = json.dumps(examples, ensure_ascii=False, sort_keys=True)
         cache_key = alert_json + "|" + examples_json
@@ -191,8 +217,8 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
                 orig_idx = chunk_indices[i]
                 text = resp.content if hasattr(resp, "content") else resp
                 item = alerts[orig_idx]
-                alert = item.get("alert", item)
-                examples = item.get("examples", [])
+                alert = _trim_alert(item.get("alert", item))
+                examples = _summarize_examples(item.get("examples", []))
                 alert_json = json.dumps(alert, ensure_ascii=False, sort_keys=True)
                 examples_json = json.dumps(examples, ensure_ascii=False, sort_keys=True)
                 cache_key = alert_json + "|" + examples_json

@@ -16,10 +16,10 @@
 
 1. **Filebeat 近即時輸入：** Filebeat 監控日誌並將新行透過 HTTP 傳送至 `filebeat_server.py`，立即觸發後續分析。
 2. **批次日誌處理：** 亦可定期執行 `main.py`，程式會根據 `data/file_state.json` 記錄的偏移量只讀取新增內容。
-3. **Wazuh 告警收集：** Wazuh 會將過濾後的告警輸出至指定檔案或 HTTP 端點，本系統直接讀取並比對，無需逐行呼叫 API。
+3. **Wazuh 告警收集：** 主要透過 `wazuh_consumer.py` 讀取 Wazuh 轉出的告警檔或 HTTP 端點，無需逐行呼叫 API。另附 `wazuh_api.py` 供臨時 logtest 使用。
 4. **啟發式評分與取樣：** 對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
 5. **向量嵌入與歷史比對：** 將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
-6. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
+6. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()`，送出前會先抽取 `rule.id`、`rule.description` 等核心欄位，並將歷史案例壓縮成單行摘要，以節省 Token，再由 Gemini 分析是否為攻擊行為並回傳結構化結果。
 7. **結果輸出與成本控制：** 將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
 
 ---

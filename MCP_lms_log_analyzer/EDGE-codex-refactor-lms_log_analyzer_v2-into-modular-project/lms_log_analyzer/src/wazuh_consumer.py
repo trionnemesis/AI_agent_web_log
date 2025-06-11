@@ -1,5 +1,9 @@
 from __future__ import annotations
-"""從預先產生的檔案或 HTTP 端點讀取 Wazuh 告警"""
+"""Wazuh 告警消費者
+
+從檔案或 HTTP 端點讀取 Wazuh 告警，是正式環境推薦的
+資料來源方式。`wazuh_api.py` 只提供臨時 logtest 用途。
+"""
 
 import json
 import logging
@@ -67,10 +71,17 @@ def get_alerts_for_lines(lines: List[str]) -> List[Dict[str, Any]]:
     alerts.extend(_read_from_http())
     if not alerts:
         return []
-    lines_set = set(lines)
-    matched = []
+
+    # 先將告警依原始日誌行建立索引，便於 O(1) 查找
+    alert_map: Dict[str, Dict[str, Any]] = {}
     for alert in alerts:
         original = alert.get("full_log") or alert.get("original_log")
-        if original and original in lines_set:
-            matched.append({"line": original, "alert": alert})
+        if original and original not in alert_map:
+            alert_map[original] = alert
+
+    matched = []
+    for ln in lines:
+        alert = alert_map.get(ln)
+        if alert:
+            matched.append({"line": ln, "alert": alert})
     return matched
