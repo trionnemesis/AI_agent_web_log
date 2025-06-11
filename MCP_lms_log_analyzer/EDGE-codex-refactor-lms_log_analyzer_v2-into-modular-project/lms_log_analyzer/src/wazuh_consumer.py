@@ -1,8 +1,10 @@
 from __future__ import annotations
-"""Production Wazuh alert consumer
+"""Wazuh 告警消費者（正式環境用）
 
-This module reads alerts from files or an HTTP endpoint and is the
-recommended way to feed Wazuh data into the batch processing flow.
+此模組會從檔案或 HTTP 端點讀取告警，並作為批次處理流程的主要資料來源。
+
+它與 :mod:`wazuh_api` 相輔相成，後者僅提供 Wazuh ``logtest`` 端點的
+輕量封裝，適用於臨時查詢。
 """
 
 import json
@@ -71,10 +73,16 @@ def get_alerts_for_lines(lines: List[str]) -> List[Dict[str, Any]]:
     alerts.extend(_read_from_http())
     if not alerts:
         return []
-    lines_set = set(lines)
-    matched = []
+
+    alert_map: Dict[str, List[Dict[str, Any]]] = {}
     for alert in alerts:
         original = alert.get("full_log") or alert.get("original_log")
-        if original and original in lines_set:
-            matched.append({"line": original, "alert": alert})
+        if not original:
+            continue
+        alert_map.setdefault(original, []).append(alert)
+
+    matched = []
+    for line in lines:
+        for alert in alert_map.get(line, []):
+            matched.append({"line": line, "alert": alert})
     return matched
