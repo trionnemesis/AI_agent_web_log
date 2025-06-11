@@ -16,7 +16,7 @@
 
 1. **Filebeat 近即時輸入：** Filebeat 監控日誌並將新行透過 HTTP 傳送至 `filebeat_server.py`，立即觸發後續分析。
 2. **批次日誌處理：** 亦可定期執行 `main.py`，程式會根據 `data/file_state.json` 記錄的偏移量只讀取新增內容。
-3. **Wazuh 告警比對：** 每行先送至 Wazuh `logtest` API，僅保留產生告警的項目並取得告警 JSON。
+3. **Wazuh 告警收集：** Wazuh 會將過濾後的告警輸出至指定檔案或 HTTP 端點，本系統直接讀取並比對，無需逐行呼叫 API。
 4. **啟發式評分與取樣：** 對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
 5. **向量嵌入與歷史比對：** 將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
 6. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
@@ -156,7 +156,7 @@ lms_log_analyzer/
     - 腳本啟動並載入 `config.py` 設定。
     - 掃描 `LMS_TARGET_LOG_DIR` 取得最新的 `.log` 檔案。
     - 從 `data/file_state.json` 取得先前處理的偏移量，只讀取新增的日誌行。
-    - 透過 Wazuh 檢查告警、計算啟發式分數並建立向量索引。
+    - 從 Wazuh 轉存的告警檔或端點擷取告警，計算啟發式分數並建立向量索引。
     - 將產生告警的日誌交由 Gemini 分析，取得結構化結果並統計 Token 成本。
     - 儲存分析輸出與最新偏移量，以便下次執行接續處理。
 4. **預期輸出檔案位置 (預設):**
@@ -191,6 +191,7 @@ lms_log_analyzer/
 - `BATCH_SIZE`：LLM 一次處理的告警筆數，可透過 `LMS_LLM_BATCH_SIZE` 設定。
 - `MAX_HOURLY_COST_USD`：每小時允許的 LLM 費用上限。
 - `GEMINI_API_KEY`：Gemini API 金鑰，可透過環境變數提供。
+- `WAZUH_ALERTS_FILE`／`WAZUH_ALERTS_URL`：若 Wazuh 已將告警輸出至檔案或 HTTP 端點，在此設定路徑或 URL 供程式讀取。
 
 ---
 
@@ -276,9 +277,9 @@ lms_log_analyzer/
 └────┬───────┘
 │
 ▼
-┌──────────────┐
-│ Wazuh Filter │ ← 調用 Wazuh logtest 檢查是否產生告警
-│ filter_logs()│
+┌───────────────┐
+│ Wazuh Alerts │ ← 由 Wazuh 轉存檔案/端點讀取告警
+│ get_alerts_for_lines()│
 └────┬─────────┘
 │
 ▼
