@@ -129,6 +129,19 @@ class LLMCostTracker:
 COST_TRACKER = LLMCostTracker()
 
 
+def _summarize_examples(examples: List[Dict[str, Any]]) -> List[str]:
+    """Return one-line summaries for historical examples."""
+
+    summaries = []
+    for ex in examples:
+        log = str(ex.get("log", "")).replace("\n", " ")
+        analysis = ex.get("analysis", {})
+        attack_type = analysis.get("attack_type", "")
+        reason = analysis.get("reason", "")
+        summaries.append(f"{log} | {attack_type} | {reason}".strip())
+    return summaries
+
+
 def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
     """使用 LLM 分析告警並回傳 JSON 結果
 
@@ -147,7 +160,7 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
 
     for idx, item in enumerate(alerts):
         alert = item.get("alert", item)
-        examples = item.get("examples", [])
+        examples = _summarize_examples(item.get("examples", []))
         alert_json = json.dumps(alert, ensure_ascii=False, sort_keys=True)
         examples_json = json.dumps(examples, ensure_ascii=False, sort_keys=True)
         cache_key = alert_json + "|" + examples_json
@@ -192,7 +205,7 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
                 text = resp.content if hasattr(resp, "content") else resp
                 item = alerts[orig_idx]
                 alert = item.get("alert", item)
-                examples = item.get("examples", [])
+                examples = _summarize_examples(item.get("examples", []))
                 alert_json = json.dumps(alert, ensure_ascii=False, sort_keys=True)
                 examples_json = json.dumps(examples, ensure_ascii=False, sort_keys=True)
                 cache_key = alert_json + "|" + examples_json
