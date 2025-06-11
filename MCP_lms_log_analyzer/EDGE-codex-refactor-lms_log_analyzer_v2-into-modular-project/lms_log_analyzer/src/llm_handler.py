@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 """LLM 互動工具
@@ -74,9 +75,21 @@ class LLMCostTracker:
         self.total_in_tokens = 0
         self.total_out_tokens = 0
         self.total_cost = 0.0
+        # 紀錄目前小時段起始時間
+        self.hour_start_ts = time.time()
+
+    def _maybe_reset_hour(self) -> None:
+        """若已跨過一小時則重置統計"""
+        if time.time() - self.hour_start_ts >= 3600:
+            self.in_tokens_hourly = 0
+            self.out_tokens_hourly = 0
+            self.cost_hourly = 0.0
+            self.hour_start_ts = time.time()
 
     def add_usage(self, in_tok: int, out_tok: int):
         """記錄一次呼叫的 Token 數量"""
+
+        self._maybe_reset_hour()
 
         self.in_tokens_hourly += in_tok
         self.out_tokens_hourly += out_tok
@@ -91,7 +104,18 @@ class LLMCostTracker:
 
     def get_hourly_cost(self) -> float:
         """取得本小時累積費用"""
+        self._maybe_reset_hour()
         return self.cost_hourly
+
+    def get_current_hour_stats(self) -> Dict[str, Any]:
+        """取得當前小時統計資料"""
+        self._maybe_reset_hour()
+        return {
+            "hour_start": self.hour_start_ts,
+            "input_tokens": self.in_tokens_hourly,
+            "output_tokens": self.out_tokens_hourly,
+            "cost_usd": self.cost_hourly,
+        }
 
     def get_total_stats(self) -> dict:
         """回傳跨執行期間的總體使用統計"""
