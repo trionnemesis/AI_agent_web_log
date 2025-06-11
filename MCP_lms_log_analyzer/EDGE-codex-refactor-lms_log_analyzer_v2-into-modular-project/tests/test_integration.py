@@ -35,7 +35,7 @@ class IntegrationTest(TestCase):
             ]
             log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-            with patch.object(log_processor, 'filter_logs', return_value=[{'line': lines[0], 'alert': {'original_log': lines[0]}}]), \
+            with patch.object(log_processor, 'get_alerts_for_lines', return_value=[{'line': lines[0], 'alert': {'original_log': lines[0]}}]), \
                  patch.object(log_processor, 'llm_analyse', return_value=[{'is_attack': True}]) as mock_analyse, \
                  patch.object(log_processor, 'embed', return_value=[0.0, 0.0, 0.0]), \
                  patch.object(log_processor, 'VECTOR_DB', DummyDB()), \
