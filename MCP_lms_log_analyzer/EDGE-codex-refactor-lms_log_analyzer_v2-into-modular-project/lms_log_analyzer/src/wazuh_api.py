@@ -1,5 +1,10 @@
 from __future__ import annotations
-"""整合 Wazuh API，用於在送往 LLM 前過濾日誌"""
+"""Wazuh API utility
+
+This module offers a simple wrapper around the Wazuh logtest endpoint.
+It is handy for ad-hoc log checks but is **not** used by the regular
+batch-processing pipeline.
+"""
 
 import logging
 from typing import Dict, List, Optional
@@ -88,15 +93,3 @@ def get_alert(line: str) -> Optional[Dict[str, any]]:
         return None
 
 
-def filter_logs(lines: List[str]) -> List[Dict[str, any]]:
-    """回傳觸發告警的日誌行及其告警內容"""
-
-    if not config.WAZUH_ENABLED:
-        return [{"line": ln, "alert": {"original_log": ln}} for ln in lines]
-    # 逐行檢查並蒐集產生告警的項目
-    suspicious: List[Dict[str, any]] = []
-    for ln in lines:
-        alert = get_alert(ln)
-        if alert:
-            suspicious.append({"line": ln, "alert": alert})
-    return suspicious

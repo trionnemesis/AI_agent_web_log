@@ -1,5 +1,9 @@
 from __future__ import annotations
-"""從預先產生的檔案或 HTTP 端點讀取 Wazuh 告警"""
+"""Production Wazuh alert consumer
+
+This module reads alerts from files or an HTTP endpoint and is the
+recommended way to feed Wazuh data into the batch processing flow.
+"""
 
 import json
 import logging

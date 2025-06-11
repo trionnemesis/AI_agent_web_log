@@ -49,9 +49,4 @@ class TestWazuhAPI(unittest.TestCase):
 
     def test_wazuh_disabled(self):
         config.WAZUH_ENABLED = False
-        lines = ["a", "b"]
-        expected = [
-            {"line": "a", "alert": {"original_log": "a"}},
-            {"line": "b", "alert": {"original_log": "b"}},
-        ]
-        self.assertEqual(wazuh_api.filter_logs(lines), expected)
+        self.assertEqual(wazuh_api.get_alert("line1"), {"original_log": "line1"})
