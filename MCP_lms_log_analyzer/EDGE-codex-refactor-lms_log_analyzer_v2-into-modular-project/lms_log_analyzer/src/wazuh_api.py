@@ -1,6 +1,5 @@
 from __future__ import annotations
-"""Wazuh API 工具模組
-
+"""Wazuh API 工具模組."""
 
 
 import logging
