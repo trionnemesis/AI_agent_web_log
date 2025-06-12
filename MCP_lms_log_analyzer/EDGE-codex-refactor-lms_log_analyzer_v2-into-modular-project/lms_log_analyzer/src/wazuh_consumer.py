@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Wazuh 告警消費者（正式環境用）
+"""Wazuh 告警消費者（正式環境用）。"""
 
 
 import json

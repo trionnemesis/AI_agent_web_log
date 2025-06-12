@@ -60,6 +60,7 @@ class LLMHandlerTest(unittest.TestCase):
     def test_llm_analyse_budget_limit(self):
         llm_handler.COST_TRACKER.get_hourly_cost = MagicMock(return_value=llm_handler.config.MAX_HOURLY_COST_USD)
 
+        alerts = [{"alert": {"rule": {"id": 1}}, "examples": []}]
         with patch("lms_log_analyzer.src.llm_handler.retry_with_backoff", side_effect=lambda f,*a,**k: f(*a, **k)):
             result = llm_handler.llm_analyse(alerts)
         llm_handler.LLM_CHAIN.batch.assert_not_called()
@@ -68,6 +69,7 @@ class LLMHandlerTest(unittest.TestCase):
     def test_llm_analyse_disabled(self):
         llm_handler.LLM_CHAIN = None
 
+        alerts = [{"alert": {"rule": {"id": 1}}, "examples": []}]
         result = llm_handler.llm_analyse(alerts)
         self.assertEqual(result, [None])
 
