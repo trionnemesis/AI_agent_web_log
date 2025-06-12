@@ -130,7 +130,7 @@ COST_TRACKER = LLMCostTracker()
 
 
 def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
-    """僅保留 Wazuh 告警中與分析相關的欄位"""
+
 
     rule = alert.get("rule", {})
     trimmed = {
@@ -158,7 +158,7 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
-    """將歷史案例整理為每行一筆的摘要文字"""
+
 
     parts = []
     for ex in examples:

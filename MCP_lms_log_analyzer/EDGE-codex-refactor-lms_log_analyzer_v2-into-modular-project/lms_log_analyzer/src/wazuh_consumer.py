@@ -1,11 +1,6 @@
 from __future__ import annotations
 """Wazuh 告警消費者（正式環境用）
 
-此模組會從檔案或 HTTP 端點讀取告警，並作為批次處理流程的主要資料來源。
-
-它與 :mod:`wazuh_api` 相輔相成，後者僅提供 Wazuh ``logtest`` 端點的
-輕量封裝，適用於臨時查詢。
-"""
 
 import json
 import logging
