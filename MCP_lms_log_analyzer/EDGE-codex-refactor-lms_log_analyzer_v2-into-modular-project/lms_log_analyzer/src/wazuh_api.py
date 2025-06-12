@@ -1,14 +1,7 @@
 from __future__ import annotations
-"""Wazuh API utility
+"""Wazuh API 工具模組
 
-This module offers a simple wrapper around the Wazuh ``logtest`` endpoint.
-It is handy for ad-hoc log checks but is **not** used by the regular
-batch-processing pipeline.
 
-``wazuh_consumer.py`` provides the production mechanism for ingesting Wazuh
-alerts. Use this ``wazuh_api`` module only when you need to query the API
-directly for a single log line.
-"""
 
 import logging
 from typing import Dict, List, Optional

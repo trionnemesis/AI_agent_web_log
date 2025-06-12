@@ -1,12 +1,6 @@
 from __future__ import annotations
-"""Production Wazuh alert consumer
+"""Wazuh 告警消費者（正式環境用）
 
-This module reads alerts from files or an HTTP endpoint and is the
-recommended way to feed Wazuh data into the batch processing flow.
-
-It complements :mod:`wazuh_api`, which offers a lightweight wrapper around the
-Wazuh ``logtest`` endpoint for ad-hoc queries.
-"""
 
 import json
 import logging

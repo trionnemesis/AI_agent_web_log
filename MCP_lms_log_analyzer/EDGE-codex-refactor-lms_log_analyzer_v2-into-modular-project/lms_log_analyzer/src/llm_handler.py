@@ -130,7 +130,7 @@ COST_TRACKER = LLMCostTracker()
 
 
 def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
-    """Return only the essential fields of a Wazuh alert."""
+
 
     rule = alert.get("rule", {})
     trimmed = {
@@ -158,7 +158,7 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
-    """Return newline-separated summaries for historical examples."""
+
 
     parts = []
     for ex in examples:
