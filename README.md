@@ -265,6 +265,7 @@ VIII. 專案進度與未來展望
 IX. 常見問題排解 (Troubleshooting)
 
 ModuleNotFoundError: No module named '...
+
 1.原因: Python 環境中缺少必要的套件。
 解決: 啟動正確的虛擬環境，然後使用 pip install -r requirements.txt 重新安裝。
 權限錯誤 (Permission Denied / Errno 13)
