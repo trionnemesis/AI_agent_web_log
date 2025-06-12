@@ -91,6 +91,8 @@
 │ Exporter           │ ← 將分析結果輸出為 JSON
 │ JSON / Log Report  │
 └────────────────────┘
+```
+
 III. 技術棧與主要工具
 本專案基於以下技術與工具建構而成：
 
@@ -111,6 +113,7 @@ Filebeat: 作為收集與轉發即時日誌的代理程式。
 開發與維運:
 
 GitHub Actions: 用於實現 CI/CD，自動化執行測試與程式碼檢查。
+
 IV. 安裝與設定
 1. 建議環境
 作業系統 (Operating System):
