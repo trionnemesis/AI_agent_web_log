@@ -27,20 +27,28 @@
 ## 專案目錄結構
 
 ```text
-lms_log_analyzer/
-├── main.py
-├── config.py
-├── requirements.txt
-├── src/
-│   ├── log_processor.py
-│   ├── log_parser.py
-│   ├── llm_handler.py
-│   ├── vector_db.py
-│   ├── utils.py
-│   ├── wazuh_api.py
-│   └── filebeat_server.py
-├── data/
-└── logs/
+MCP_lms_log_analyzer/
+└─ EDGE-codex-refactor-lms_log_analyzer_v2-into-modular-project/
+   ├─ lms_log_analyzer/
+   │  ├─ main.py
+   │  ├─ config.py
+   │  ├─ requirements.txt
+   │  ├─ src/
+   │  │  ├─ filebeat_server.py
+   │  │  ├─ llm_handler.py
+   │  │  ├─ log_parser.py
+   │  │  ├─ log_processor.py
+   │  │  ├─ utils.py
+   │  │  ├─ vector_db.py
+   │  │  ├─ wazuh_api.py
+   │  │  └─ wazuh_consumer.py
+   │  ├─ data/
+   │  └─ logs/
+   └─ tests/
+      ├─ test_integration.py
+      ├─ test_llm_handler.py
+      ├─ test_log_parser.py
+      └─ test_wazuh_api.py
 ```
 
 ## II. 建議安裝環境
