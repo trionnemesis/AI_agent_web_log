@@ -94,32 +94,28 @@
 ```
 專案目錄
 ```
-LMS-AI/
-├── README.md
-├── requirements.txt
-├── config.py
-├── data/
-│   ├── file_state.json
-│   └── analysis_results.json
-├── logs/
-│   └── …
-├── models/
-│   └── faiss_index/
-├── src/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── filebeat_server.py
-│   ├── log_parser.py
-│   ├── log_processor.py
-│   ├── vector_utils.py
-│   ├── llm_client.py
-│   └── exporter.py
-├── tests/
-│   ├── test_parser.py
-│   └── test_end_to_end.py
-└── .github/
-    └── workflows/
-        └── ci.yml
+MCP_lms_log_analyzer/
+└─ EDGE-codex-refactor-lms_log_analyzer_v2-into-modular-project/
+   ├─ lms_log_analyzer/
+   │  ├─ main.py
+   │  ├─ config.py
+   │  ├─ requirements.txt
+   │  ├─ src/
+   │  │  ├─ filebeat_server.py
+   │  │  ├─ llm_handler.py
+   │  │  ├─ log_parser.py
+   │  │  ├─ log_processor.py
+   │  │  ├─ utils.py
+   │  │  ├─ vector_db.py
+   │  │  ├─ wazuh_api.py
+   │  │  └─ wazuh_consumer.py
+   │  ├─ data/
+   │  └─ logs/
+   └─ tests/
+      ├─ test_integration.py
+      ├─ test_llm_handler.py
+      ├─ test_log_parser.py
+      └─ test_wazuh_api.py
 ```
 III. 技術與主要工具
 本專案基於以下技術與工具建構而成：
