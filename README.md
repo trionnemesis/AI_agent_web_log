@@ -267,12 +267,14 @@ VIII. 專案進度與未來展望
 依賴管理: 定期更新 requirements.txt 中的函式庫版本，以獲取效能改進與安全性更新。
 
 IX. 常見問題排解 (Troubleshooting)
+
 ModuleNotFoundError: No module named '...
-原因: Python 環境中缺少必要的套件。
+1.原因: Python 環境中缺少必要的套件。
 解決: 啟動正確的虛擬環境，然後使用 pip install -r requirements.txt 重新安裝。
 權限錯誤 (Permission Denied / Errno 13)
-原因: 腳本執行使用者沒有讀取日誌目錄/檔案或寫入輸出目錄/檔案的權限。
+
+2.原因: 腳本執行使用者沒有讀取日誌目錄/檔案或寫入輸出目錄/檔案的權限。
 解決: 檢查並修正相關目錄和檔案的權限 (ls -l, chmod, chown)，或將輸出路徑設置到使用者有權限的位置。
 API 金鑰問題 (認證失敗、401/403 錯誤)
-原因: GEMINI_API_KEY 未設定、設定錯誤或金鑰本身無效/權限不足。
+3.原因: GEMINI_API_KEY 未設定、設定錯誤或金鑰本身無效/權限不足。
 解決: 再次確認 GEMINI_API_KEY 環境變數已正確設定，且金鑰有效。
