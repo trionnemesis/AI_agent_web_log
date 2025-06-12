@@ -1,315 +1,247 @@
-# MS AI 日誌分析與告警系統 (基於 Gemini 與 LangChain)
+# LMS AI 日誌分析與告警系統 (基於 Gemini 與 LangChain)
 
-## 概覽與介紹
+## I. 專案目標與概覽
 
-本系統旨在自動化分析 `/var/log/LMS_LOG/` 目錄下的日誌檔案，利用啟發式規則、向量搜尋（模擬）以及 Google Gemini 大型語言模型（透過 LangChain 框架）來識別潛在的攻擊或異常行為，並在偵測到可疑活動時產生告警。
-
-**核心技術：**
-
-- **Python:** 主要程式語言。
-- **LangChain:** 用於簡化與大型語言模型 (LLM) 的互動。
-- **Google Gemini Pro (透過 API):** 用於對可疑日誌進行深度分析。腳本中使用 `gemini-2.0-flash` 作為模型範例。
+本專案旨在自動化分析日誌檔案，利用啟發式規則、向量搜尋以及 Google Gemini 大型語言模型（透過 LangChain 框架）來識別潛在的攻擊或異常行為。系統會從大量、格式不一的日誌中，快速識別可疑活動，產生結構化的分析結果與告警，以輔助資安人員進行決策。
 
 ---
 
-## I. 系統架構 (概念流程)
+## II. 系統架構
 
-1. **Filebeat 近即時輸入：** Filebeat 監控日誌並將新行透過 HTTP 傳送至 `filebeat_server.py`，立即觸發後續分析。
-2. **批次日誌處理：** 亦可定期執行 `main.py`，程式會根據 `data/file_state.json` 記錄的偏移量只讀取新增內容。
-3. **Wazuh 告警收集：** Wazuh 會將過濾後的告警輸出至指定檔案或 HTTP 端點，本系統直接讀取並比對，無需逐行呼叫 API。
-4. **啟發式評分與取樣：** 對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
-5. **向量嵌入與歷史比對：** 將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
-6. **LLM 深度分析：** 把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
-7. **結果輸出與成本控制：** 將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
+### 核心組件
 
----
+本系統採用模組化設計，主要包含以下幾個核心部分：
 
-## 專案目錄結構
+1.  **日誌來源 (Log Source)**:
+    * **批次處理**: 定期掃描並處理指定目錄下的日誌檔案（支援 `.log`, `.gz`, `.bz2`）。
+    * **即時處理**: 透過 HTTP 端點接收來自 Filebeat 等代理程式的即時日誌流。
+2.  **前置處理與過濾 (Preprocessor & Filter)**:
+    * **Wazuh 告警整合**: 僅針對 Wazuh 已觸發規則的告警日誌進行分析，有效縮小分析範圍。
+    * **啟發式評分 (Heuristic Scoring)**: 透過內建的關鍵字與規則，對日誌進行快速評分，篩選出高風險日誌。
+    * **智慧取樣 (Sampling)**: 僅挑選評分最高的日誌樣本送交 LLM，大幅降低 API 成本。
+3.  **核心分析引擎 (Core Analyzer)**:
+    * **向量化與相似度搜尋**: 使用 Sentence Transformers 模型將日誌轉換為向量，並在 FAISS 向量資料庫中尋找相似的歷史攻擊案例。
+    * **LLM 分析**: 呼叫 Google Gemini 模型，結合當前日誌與歷史案例，進行攻擊判斷、類型分類與原因分析。
+    * **成本控制**: 包含結果快取 (Cache)、批次處理 (Batching) 及每小時費用上限，確保成本可控。
+4.  **結果輸出 (Output)**:
+    * 將分析結果以結構化的 JSON 格式寫入檔案中。
+
+### 概念流程
+
+1.  **Filebeat 近即時輸入**：Filebeat 監控日誌並將新行透過 HTTP 傳送至 `filebeat_server.py`，立即觸發後續分析。
+2.  **批次日誌處理**：亦可定期執行 `main.py`，程式會根據 `data/file_state.json` 記錄的偏移量只讀取新增內容。
+3.  **Wazuh 告警收集**：Wazuh 會將過濾後的告警輸出至指定檔案或 HTTP 端點，本系統直接讀取並比對，無需逐行呼叫 API。
+4.  **啟發式評分與取樣**：對告警行以 `fast_score()` 計算分數，挑選最高分的前 `SAMPLE_TOP_PERCENT`％ 作為候選。
+5.  **向量嵌入與歷史比對**：將候選日誌嵌入向量並寫入 FAISS 索引，以便搜尋過往相似模式。
+6.  **LLM 深度分析**：把 Wazuh 告警 JSON 傳入 `llm_analyse()` 由 Gemini 分析是否為攻擊行為並回傳結構化結果。
+7.  **結果輸出與成本控制**：將分析結果寫入 `analysis_results.json`，同時更新向量索引、狀態檔並追蹤 LLM Token 成本。
+
+### 架構圖
 
 ```text
-lms_log_analyzer/
-├── main.py
-├── config.py
-├── requirements.txt
-├── src/
-│   ├── log_processor.py
-│   ├── log_parser.py
-│   ├── llm_handler.py
-│   ├── vector_db.py
-│   ├── utils.py
-│   ├── wazuh_api.py
-│   └── filebeat_server.py
-├── data/
-└── logs/
-```
-
-## II. 建議安裝環境
-
-- **作業系統 (Operating System):**
-    - 建議使用 Linux 發行版 (如 Ubuntu, CentOS, Debian)。因為腳本設計用來讀取類 Unix 系統常見的日誌路徑 (如 `/var/log/`)。
-    - macOS 應該也可以運作。
-    - Windows 可能需要調整路徑寫法及排程方式。
-- **Python 版本:**
-    - Python 3.8 或更高版本。
-- **虛擬環境 (Virtual Environment - 強烈建議):**
-    - 使用 `venv` 或 `conda` 建立獨立的 Python 環境，以避免套件版本衝突。
-    - 例如：`python3 -m venv lms_ai_env`
-
----
-
-## III. 安裝步驟與說明
-
-1. **先決條件 (Prerequisites):**
-    - **Python 與 Pip:** 確保您的系統已安裝 Python 3.8+ 及 Pip。
-        
-        ```bash
-        python3 --version
-        pip3 --version
-        
-        ```
-        
-    - **日誌目錄存取權限:** 執行腳本的使用者需要有權限讀取您設定的 `LOG_DIRECTORY` (預設為 `/var/log/LMS_LOG/`) 及其中的檔案。如果腳本需要在該目錄下創建模擬日誌檔 (當目錄為空時)，則還需要寫入權限。
-    - **Google AI Studio API Key:**
-        - 您需要前往 [Google AI Studio](https://aistudio.google.com/) 取得 Gemini API 金鑰。
-        - 此金鑰將用於讓腳本透過 LangChain 與 Gemini 模型進行通訊。
-2. **設定虛擬環境 (建議):**
-    - 開啟終端機，進入您想放置專案的目錄。
-    - 建立虛擬環境 (假設名稱為 `lms_ai_env`):
-        
-        ```bash
-        python3 -m venv lms_ai_env
-        
-        ```
-        
-    - 啟動虛擬環境:
-    
-    啟動後，您的終端機提示符前應會出現 `(lms_ai_env)`。
-        - Linux/macOS:
-            
-            ```bash
-            source lms_ai_env/bin/activate
-            
-            ```
-            
-        - Windows:
-            
-            ```bash
-            lms_ai_env\\Scripts\\activate
-            
-            ```
-            
-3. **安裝 Python 套件:**
-    - 在已啟動的虛擬環境中，執行以下指令安裝必要的 Python 函式庫：
-        
-        ```bash
-        pip install -r lms_log_analyzer/requirements.txt
-        ```
-        
-    - **套件說明:**
-        - `langchain`: LangChain 核心函式庫，提供與 LLM 互動的框架。
-        - `langchain-google-genai`: LangChain 專用於整合 Google Generative AI (包括 Gemini 模型) 的套件。
-        - `google-api-python-client`: Google API 的 Python 客戶端函式庫，`langchain-google-genai` 可能會依賴它。
-4. **取得並設定程式:**
-    - 下載或 clone 此專案，確保 `lms_log_analyzer` 目錄與上方目錄結構相符。
-    - **設定 API 金鑰:**
-        - 建議在環境變數 `GEMINI_API_KEY` 中指定，避免將金鑰寫死在程式碼中。
-    - **調整設定值:**
-        - 所有設定集中於 `lms_log_analyzer/config.py`，也可透過對應環境變數覆寫，如 `LMS_TARGET_LOG_DIR` 等。
-5. **目錄與檔案權限 (Directory & File Permissions):**
-    - **讀取日誌:** 執行腳本的使用者必須擁有對 `LOG_DIRECTORY` 及其內部日誌檔案的**讀取**權限。
-        
-        ```bash
-        # 範例：檢查目錄權限
-        ls -ld /var/log/LMS_LOG/
-        # 範例：檢查檔案權限 (假設有個 access.log)
-        ls -l /var/log/LMS_LOG/access.log
-        
-        ```
-        
-    - **寫入輸出檔案:** 執行腳本的使用者需能寫入 `LMS_ANALYSIS_OUTPUT_FILE` 及 `data/` 目錄，程式才能儲存分析結果與狀態檔。
-
----
-
-## IV. 執行腳本
-
-1. **啟動虛擬環境** (如果尚未啟動):
-    
-    ```bash
-    source lms_ai_env/bin/activate
-    
-    ```
-    
-2. **執行程式:**
-
-    ```bash
-    python lms_log_analyzer/main.py
-
-    ```
-
-    若要以近即時方式搭配 Filebeat，啟動以下伺服器：
-
-    ```bash
-    python -m lms_log_analyzer.src.filebeat_server
-    ```
-    
-3. **腳本運作流程簡述:**
-    - 腳本啟動並載入 `config.py` 設定。
-    - 掃描 `LMS_TARGET_LOG_DIR` 取得最新的 `.log` 檔案。
-    - 從 `data/file_state.json` 取得先前處理的偏移量，只讀取新增的日誌行。
-    - 從 Wazuh 轉存的告警檔或端點擷取告警，計算啟發式分數並建立向量索引。
-    - 將產生告警的日誌交由 Gemini 分析，取得結構化結果並統計 Token 成本。
-    - 儲存分析輸出與最新偏移量，以便下次執行接續處理。
-4. **預期輸出檔案位置 (預設):**
-    - 分析結果: `/var/log/analyzer_results.json`
-
-5. **Filebeat 範例設定:** 以下是一個簡易的 Filebeat `output.http` 範例，會將日誌傳送至本程式的伺服器：
-
-    ```yaml
-    filebeat.inputs:
-      - type: log
-        paths: ["/var/log/LMS_LOG/*.log"]
-
-    output.http:
-      url: "http://localhost:9000/"
-      method: POST
-      headers:
-        Content-Type: application/json
-      format: json
-      batch_publish: true
-    ```
-
----
-
-## V. 腳本設定詳解 (Configurable Settings)
-
-所有可自訂的參數都集中在 `lms_log_analyzer/config.py` 中，也可透過環境變數覆寫。
-常見的設定包含：
-
-- `LMS_TARGET_LOG_DIR`：要掃描的日誌目錄。
-- `LMS_ANALYSIS_OUTPUT_FILE`：分析結果輸出的 JSON 路徑。
-- `CACHE_SIZE`、`SAMPLE_TOP_PERCENT`：控制快取大小與取樣比例。
-- `BATCH_SIZE`：LLM 一次處理的告警筆數，可透過 `LMS_LLM_BATCH_SIZE` 設定。
-- `MAX_HOURLY_COST_USD`：每小時允許的 LLM 費用上限。
-- `GEMINI_API_KEY`：Gemini API 金鑰，可透過環境變數提供。
-- `WAZUH_ALERTS_FILE`／`WAZUH_ALERTS_URL`：若 Wazuh 已將告警輸出至檔案或 HTTP 端點，在此設定路徑或 URL 供程式讀取。
-
----
-
-## VI. 未來可改進建議
-
-1. **增強型日誌解析 (Enhanced Log Parsing):**
-    - 對於更複雜或多樣的日誌格式，可以考慮使用更強大的日誌解析函式庫，如 `python-grok`。
-2. **真實向量搜尋與嵌入 (Advanced Vector Search):**
-    - 整合真正的向量資料庫 (如 FAISS, Milvus, Pinecone, Qdrant 等)。
-    - 使用文本嵌入模型 (如 Google 的 `text-embedding-004` 模型，或開源的 Sentence Transformers) 將日誌條目轉換為向量，以實現更精確的攻擊模式和正常模式比對。
-3. **支援壓縮日誌處理 (Compressed Log Handling):**
-    - 增加讀取和即時解壓縮已壓縮日誌檔案 (如 `.gz`, `.bz2`) 的功能，以便分析歷史歸檔日誌。
-4. **更完善的多檔案與輪替日誌狀態管理 (State Management):**
-    - 如果需要同時處理目錄中多個檔案或更精確地追蹤已處理的日誌段落（而不僅是依賴最新檔案和內部時間戳），可以考慮更複雜的狀態管理機制，例如記錄每個檔案的處理位元組偏移 (byte offset) 或 inode。
-5. **錯誤處理與健壯性 (Error Handling & Resilience):**
-    - 增強腳本的錯誤處理能力，例如增加 API 呼叫的重試機制。
-    - 對於無法預期的日誌格式或系統問題，提供更友好的錯誤回饋和恢復能力。
-6. **外部化設定管理 (Configuration Management):**
-    - 將所有可配置參數（如 API 金鑰、路徑、閾值等）移至外部設定檔 (如 YAML, JSON, `.env` 檔案)，而不是直接寫在腳本中，方便管理和部署。
-7. **近即時處理 (Near Real-time Processing):**
-    - 若需更頻繁的分析，可以調整 cron job 的執行頻率。
-    - 考慮與日誌收集/串流解決方案 (如 Filebeat, Fluentd, Kafka) 整合，以實現更接近即時的日誌分析。
-8. **進階告警整合 (Advanced Alerting):**
-    - 除了模擬郵件，可以整合更專業的告警平台，如 PagerDuty, Slack, Opsgenie, Microsoft Teams 等，以便告警能更有效地觸達相關人員。
-9. **安全性強化 (Security Enhancements):**
-    - 對於生產環境，API 金鑰應使用更安全的儲存方式，如 HashiCorp Vault, Google Cloud Secret Manager, AWS Secrets Manager 等，而不是僅依賴環境變數或腳本內提示。
-10. **LLM 成本優化 (Cost Optimization for LLM):**
-    - 實現更精細的成本追蹤。
-    - 開發可疑日誌的自適應取樣策略 (例如，只將最可疑的 N% 日誌送往 LLM)。
-    - 為相似的查詢實作快取機制，避免重複呼叫 LLM。
-11. **LLM 批次處理 (Batch Processing for LLM):**
-    - 如果一次發現大量可疑日誌，研究 Gemini API 是否支援或能從批次請求中受益，以減少 API 呼叫的總體開銷。
-12. **Web UI/儀表板 (Web UI/Dashboard):**
-    - 開發一個簡單的 Web 介面，用於查看告警、統計數據、Token 使用情況，甚至管理部分設定。
-13. **單元測試與整合測試 (Unit & Integration Testing):**
-    - 為腳本的關鍵部分編寫單元測試和整合測試，以確保程式碼的品質、可靠性，並在未來修改時能快速發現潛在問題。
-14. **日誌輪替感知 (Log Rotation Awareness):**
-    - 雖然目前選擇最新 `.log` 檔案的方式能應對部分輪替，但可以設計更明確的邏輯來識別和處理日誌輪替事件，確保數據的連續性。
-
----
-
-## VII. 常見問題排解 (Troubleshooting Common Issues)
-
-- **`ModuleNotFoundError: No module named 'some_package'`**
-    - **原因:** Python 環境中缺少必要的套件。
-    - **解決:** 啟動正確的虛擬環境，然後使用 `pip install some_package` 安裝。
-- **權限錯誤 (Permission Denied / Errno 13)**
-    - **原因:** 腳本執行使用者沒有讀取日誌目錄/檔案或寫入輸出目錄/檔案的權限。
-    - **解決:**
-        - 檢查並修正相關目錄和檔案的權限 (`ls -l`, `chmod`, `chown`)。
-        - 確保以擁有正確權限的使用者執行腳本。
-        - 將 `LMS_ANALYSIS_OUTPUT_FILE` 與 `data/` 目錄等輸出路徑設置到使用者具寫入權限的位置 (如 `/tmp/` 或家目錄下的子目錄)。
-- **`[Errno 21] Is a directory`**
-    - **原因:** 腳本試圖將一個目錄當作檔案來開啟。通常是因為 `LOG_DIRECTORY` 被錯誤地當作完整檔案路徑傳遞給了 `open()` 函數。
-    - **解決:** 確保腳本中的路徑變數 (尤其是傳給 `open()` 的) 指向的是檔案而不是目錄。在此腳本的最新版本中，應檢查 `get_latest_log_file` 是否正確返回檔案路徑。
-- **API 金鑰問題 (認證失敗、401/403 錯誤)**
-    - **原因:** `GEMINI_API_KEY` 未設定、設定錯誤或金鑰本身無效/權限不足。
-    - **解決:**
-        - 確認 `GEMINI_API_KEY` 已正確設定 (透過環境變數或腳本內提示)。
-        - 驗證 API 金鑰是否有效，以及是否已為您的專案啟用 Gemini API。
-        - 或者是使用openai key也可以但腳本需要對應的修改
-        
-- **日誌時間戳解析錯誤**
-    - **原因:** 日誌檔案中的時間戳格式與腳本中 `read_incremental_logs` 函數預期的 `strptime` 格式不符。
-    - **解決:** 修改 `read_incremental_logs` 中 `datetime.datetime.strptime(timestamp_str, "...")` 的格式字串，使其與您的實際日誌時間戳格式匹配。
-
----
-
-架構圖
 ┌────────────┐
-│ Log Source │   ← 來自 LMS 系統的 .log/.gz/.bz2 檔案
+│ Log Source │  ← 來自 LMS 系統的 .log/.gz/.bz2 檔案
 └────┬───────┘
-│            
-▼             
+     │
+     ▼
 ┌──────────────┐
 │  Filebeat    │ ← 監控日誌並透過 HTTP 送出
 └────┬─────────┘
-│
-▼
+     │
+     ▼
 ┌────────────┐
 │  Parser    │ ← 逐行讀取新日誌、解壓縮、處理編碼
 │ tail_since │
 └────┬───────┘
-│
-▼
+     │
+     ▼
 ┌───────────────┐
 │ Wazuh Alerts │ ← 由 Wazuh 轉存檔案/端點讀取告警
 │ get_alerts_for_lines()│
 └────┬─────────┘
-│
-▼
+     │
+     ▼
 ┌──────────────┐
 │ Fast Scorer  │ ← 啟發式快速評分
 │ fast_score() │
 └────┬─────────┘
-│top X%
-▼
+     │ top X%
+     ▼
 ┌────────────────────┐
-│ Vector Embedder     │ ← 用 sentence-transformers 或 SHA256 偽向量
-│ embed()             │
+│ Vector Embedder    │ ← 用 sentence-transformers 或 SHA256 偽向量
+│ embed()            │
 └────┬────────────────┘
-│                ┌────────────────────┐
-│                │ FAISS Vector Index │ ← 搜尋歷史相似模式
-│───────────────▶│ search(), add()    │
-└────────────────────┘
-▼
+     │               ┌────────────────────┐
+     │               │ FAISS Vector Index │ ← 搜尋歷史相似模式
+     ├───────────────▶│ search(), add()    │
+     │               └────────────────────┘
+     ▼
 ┌────────────────────┐
 │ Gemini LLM (Langchain) │ ← 分析是否為攻擊行為
-│ llm_analyse()          │
-└────────┬──────────────┘
-│
-▼
+│ llm_analyse()        │
+└────────┬───────────┘
+         │
+         ▼
 ┌────────────────────┐
 │ Cache / Token Cost │ ← 避免重複分析 + 成本控制
 │ LRUCache / Tracker │
-└────────┬────────────┘
-▼
+└────────┬───────────┘
+         ▼
 ┌────────────────────┐
-│ Exporter            │ ← 將分析結果輸出為 JSON
-│ JSON / Log Report   │
+│ Exporter           │ ← 將分析結果輸出為 JSON
+│ JSON / Log Report  │
 └────────────────────┘
+III. 技術棧與主要工具
+本專案基於以下技術與工具建構而成：
+
+程式語言:
+
+Python 3.8+: 作為主要的開發語言。
+核心函式庫:
+
+LangChain: 用於快速建構 LLM 應用，管理與串聯提示 (Prompt)、模型 (LLM) 與輸出解析 (Output Parser)。
+Sentence Transformers: 用於將日誌文本轉換為高品質的語義向量 (Embeddings)。
+FAISS (Facebook AI Similarity Search): 由 Facebook AI 開發的高效相似度搜尋函式庫，用於本地向量儲存與檢索。
+Pytest: 用於驅動專案的單元測試與整合測試。
+整合服務:
+
+Google Gemini: 作為核心分析引擎的大型語言模型。
+Wazuh: 作為主要的資安告警來源與日誌的前置過濾器。
+Filebeat: 作為收集與轉發即時日誌的代理程式。
+開發與維運:
+
+GitHub Actions: 用於實現 CI/CD，自動化執行測試與程式碼檢查。
+IV. 安裝與設定
+1. 建議環境
+作業系統 (Operating System):
+建議使用 Linux 發行版 (如 Ubuntu, CentOS, Debian)。
+macOS 應該也可以運作。
+Windows 可能需要調整路徑寫法及排程方式。
+Python 版本:
+Python 3.8 或更高版本。
+虛擬環境 (Virtual Environment - 強烈建議):
+使用 venv 或 conda 建立獨立的 Python 環境，以避免套件版本衝突。
+2. 安裝步驟
+先決條件:
+
+Python 與 Pip: 確保您的系統已安裝 Python 3.8+ 及 Pip。
+日誌目錄存取權限: 執行腳本的使用者需要有權限讀取您設定的 LOG_DIRECTORY。
+Google AI Studio API Key: 您需要前往 Google AI Studio 取得 Gemini API 金鑰。
+建立並啟動虛擬環境 (建議):
+
+Bash
+
+# 建立虛擬環境 (名稱自訂)
+python3 -m venv lms_ai_env
+
+# 啟動虛擬環境
+# Linux/macOS:
+source lms_ai_env/bin/activate
+# Windows:
+# lms_ai_env\Scripts\activate
+啟動後，您的終端機提示符前應會出現 (lms_ai_env)。
+
+安裝 Python 套件:
+在已啟動的虛擬環境中，執行以下指令安裝必要的 Python 函式庫：
+
+Bash
+
+pip install -r requirements.txt
+設定 API 金鑰與組態:
+
+API 金鑰: 建議將您的金鑰設定為環境變數，以策安全。
+Bash
+
+export GEMINI_API_KEY="YOUR_GOOGLE_API_KEY"
+調整組態: 所有可調整的設定都集中在 config.py。您可以直接修改該檔案，或透過設定對應的環境變數來覆寫預設值（如 LMS_TARGET_LOG_DIR）。
+V. 使用方式
+1. 批次處理模式
+直接執行 main.py，程式會自動掃描 config.py 中設定的日誌目錄。
+
+Bash
+
+python main.py
+腳本將從上次中斷的地方繼續處理新的日誌行，並將結果輸出至指定的 JSON 檔案。
+
+2. 即時處理模式 (Filebeat)
+啟動接收伺服器:
+
+Bash
+
+python src/filebeat_server.py
+伺服器預設會在 localhost:8080 監聽。
+
+設定 Filebeat:
+在您的 filebeat.yml 中，設定 output 指向本專案的 HTTP 端點。
+
+YAML
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/LMS_LOG/*.log
+
+output.http:
+  url: "http://localhost:8080"
+  method: "POST"
+  headers:
+    Content-Type: "application/json"
+VI. 測試
+本專案包含單元測試與整合測試。執行以下指令來運行所有測試：
+
+Bash
+
+pytest
+VII. 設定詳解
+所有可自訂的參數都集中在 config.py 中，也可透過環境變數覆寫。常見的設定包含：
+
+LMS_TARGET_LOG_DIR：要掃描的日誌目錄。
+LMS_ANALYSIS_OUTPUT_FILE：分析結果輸出的 JSON 路徑。
+CACHE_SIZE、SAMPLE_TOP_PERCENT：控制快取大小與取樣比例。
+BATCH_SIZE：LLM 一次處理的告警筆數，可透過 LMS_LLM_BATCH_SIZE 設定。
+MAX_HOURLY_COST_USD：每小時允許的 LLM 費用上限。
+GEMINI_API_KEY：Gemini API 金鑰，可透過環境變數提供。
+WAZUH_ALERTS_FILE／WAZUH_ALERTS_URL：若 Wazuh 已將告警輸出至檔案或 HTTP 端點，在此設定路徑或 URL 供程式讀取。
+VIII. 專案進度與未來展望
+此章節追蹤專案的實作進度與未來的優化方向。
+
+已完成項目
+以下是根據初期規劃，目前已在專案中實現的功能：
+
+進階向量搜尋: 已導入 faiss-cpu 與 sentence-transformers，實現了高效的本地向量相似度搜尋。
+壓縮日誌處理: 系統能自動讀取並處理 .gz 與 .bz2 格式的壓縮日誌。
+狀態管理與日誌輪替: 透過追蹤檔案 inode 與讀取位移，能穩定處理日誌輪替 (Log Rotation) 而不遺漏或重複。
+錯誤處理與韌性: 關鍵的網路I/O（如 LLM 與 Wazuh API 呼叫）已加上具備指數退讓的重試機制。
+外部化設定: 專案設定皆可透過環境變數覆寫，無需修改程式碼。
+近即時處理: 已提供 filebeat_server.py，支援透過 HTTP 進行近即時的日誌分析。
+成本控制與批次處理: 成功實作了結果快取、智慧取樣、成本上限保護，並透過批次處理提升 LLM API 呼叫效率。
+自動化測試: 已建立完整的 pytest 測試集，並透過 GitHub Actions 實現 CI/CD。
+未來擴充與優化建議
+1. 核心建議：導入 OpenSearch 打造一站式分析平台
+這是最具價值的下一步。將目前的輸出（JSON 檔案）改為直接寫入 OpenSearch，可以一次性解決多個問題：
+
+視覺化儀表板 (Dashboard): 利用 OpenSearch Dashboards 建立互動式儀表板，取代手動查閱 JSON，實現告警視覺化、趨勢分析與系統監控。
+取代本地向量庫: 利用 OpenSearch 內建的 k-NN 向量搜尋功能，將日誌嵌入向量直接存入 OpenSearch。這能簡化系統架構，並具備更強的擴展性。
+實現進階告警: 透過 OpenSearch 的告警外掛，設定規則（如：當 attack_type 為 SQL Injection 且信賴度 > 0.9 時），自動發送通知到 Slack 或 Teams。
+2. 進一步降低 LLM Token 消耗
+目前的成本控制已相當有效，但仍可從「提示工程 (Prompt Engineering)」層面繼續優化：
+
+總結歷史上下文: 修改 _summarize_examples 函式，不要傳送完整的歷史日誌原文，改為傳送其摘要，如 歷史攻擊: {attack_type} | 理由: {reason}。這能大幅減少每次呼叫的 Token 量。
+導入分層式 LLM 架構: 對於 LLM 回傳「不確定」或信賴度低的結果，可設計一個升級機制，呼叫更強大（也更昂貴）的模型進行二次分析，實現成本與準確性的最佳平衡。
+3. 增強日誌解析與安全性
+增強日誌解析能力: 對於非 Wazuh 的複雜日誌格式，可導入 python-grok 函式庫，取代現有的字串切割，讓日誌解析更精準、更具擴展性。
+強化金鑰安全性: 將 GEMINI_API_KEY 等敏感資訊從環境變數改為由專門的密鑰管理系統（如 HashiCorp Vault、AWS/GCP Secret Manager）進行管理。
+4. 持續優化程式碼
+效能剖析 (Profiling): 定期對程式碼進行效能剖析，特別是 log_processor.py 中的熱點路徑，找出潛在瓶頸並進行優化。
+依賴管理: 定期更新 requirements.txt 中的函式庫版本，以獲取效能改進與安全性更新。
+IX. 常見問題排解 (Troubleshooting)
+ModuleNotFoundError: No module named '...
+原因: Python 環境中缺少必要的套件。
+解決: 啟動正確的虛擬環境，然後使用 pip install -r requirements.txt 重新安裝。
+權限錯誤 (Permission Denied / Errno 13)
+原因: 腳本執行使用者沒有讀取日誌目錄/檔案或寫入輸出目錄/檔案的權限。
+解決: 檢查並修正相關目錄和檔案的權限 (ls -l, chmod, chown)，或將輸出路徑設置到使用者有權限的位置。
+API 金鑰問題 (認證失敗、401/403 錯誤)
+原因: GEMINI_API_KEY 未設定、設定錯誤或金鑰本身無效/權限不足。
+解決: 再次確認 GEMINI_API_KEY 環境變數已正確設定，且金鑰有效。
