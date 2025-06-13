@@ -130,8 +130,7 @@ COST_TRACKER = LLMCostTracker()
 
 
 def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
-
-
+    """抽取分析所需欄位，省略 agent、manager 等無關資訊"""
     rule = alert.get("rule", {})
     trimmed = {
         "rule": {
@@ -152,6 +151,7 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
+    """將歷史範例壓縮成短句，只保留攻擊類型與理由"""
 
     parts = []
     for ex in examples:
