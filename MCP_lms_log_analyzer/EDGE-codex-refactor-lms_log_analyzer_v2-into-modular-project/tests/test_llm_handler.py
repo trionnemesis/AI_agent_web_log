@@ -33,6 +33,10 @@ class LLMHandlerTest(unittest.TestCase):
             {"log": "line2", "analysis": {"attack_type": "mal", "reason": "y"}},
         ]
 
+        summary = llm_handler._summarize_examples(examples)
+        self.assertNotIn("line1", summary)
+        self.assertIn("歷史攻擊: phish | 理由: x", summary)
+        self.assertIn("歷史攻擊: mal | 理由: y", summary)
 
     def test_llm_analyse_caches_and_summarizes(self):
         example = {
@@ -46,7 +50,9 @@ class LLMHandlerTest(unittest.TestCase):
 
         llm_handler.LLM_CHAIN.batch.assert_called_once()
         sent = llm_handler.LLM_CHAIN.batch.call_args.args[0][0]["examples_summary"]
-        self.assertIn("bad log", sent)
+        self.assertNotIn("bad log", sent)
+        self.assertIn("sql", sent)
+        self.assertIn("r", sent)
         alert_json = llm_handler.LLM_CHAIN.batch.call_args.args[0][0]["alert_json"]
         self.assertIn("\"id\": 1", alert_json)
 
