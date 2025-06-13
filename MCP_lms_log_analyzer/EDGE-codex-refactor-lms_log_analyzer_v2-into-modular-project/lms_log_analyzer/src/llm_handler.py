@@ -143,12 +143,6 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
     original = alert.get("full_log") or alert.get("original_log")
     if original:
         trimmed["original_log"] = original
-    agent_name = alert.get("agent", {}).get("name")
-    if agent_name:
-        trimmed.setdefault("agent", {})["name"] = agent_name
-    manager_name = alert.get("manager", {}).get("name")
-    if manager_name:
-        trimmed.setdefault("manager", {})["name"] = manager_name
     data = alert.get("data", {})
     for key in ("srcip", "dstip", "srcport", "dstport"):
         value = data.get(key)
@@ -159,14 +153,14 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 
 def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
 
-
     parts = []
     for ex in examples:
-        log = str(ex.get("log", "")).replace("\n", " ")
         analysis = ex.get("analysis", {})
         attack_type = analysis.get("attack_type", "")
         reason = analysis.get("reason", "")
-        parts.append(f"{log} | {attack_type} | {reason}".strip())
+        if not attack_type and not reason:
+            continue
+        parts.append(f"歷史攻擊: {attack_type} | 理由: {reason}".strip())
     return "\n".join(parts)
 
 
