@@ -3,6 +3,7 @@ import json
 import logging
 import time
 from typing import Any, Dict, List, Optional
+import hashlib
 
 """LLM 互動工具
 
@@ -183,16 +184,17 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
     for idx, item in enumerate(alerts):
         alert = item.get("alert", item)
         trimmed = _trim_alert(alert)
-        examples_summary = _summarize_examples(item.get("examples", []))
         alert_json = json.dumps(trimmed, ensure_ascii=False, sort_keys=True)
-        cache_key = alert_json + "|" + examples_summary
+        cache_key = hashlib.sha256(alert_json.encode("utf-8", "replace")).hexdigest()
         cached = CACHE.get(cache_key)
         if cached is not None:
             # 若已在快取中，直接使用
             results[idx] = cached
-        else:
-            indices_to_query.append(idx)
-            batch_inputs.append({"alert_json": alert_json, "examples_summary": examples_summary})
+            continue
+
+        examples_summary = _summarize_examples(item.get("examples", []))
+        indices_to_query.append(idx)
+        batch_inputs.append({"alert_json": alert_json, "examples_summary": examples_summary})
 
     if not batch_inputs:
         # 全部都有快取，不需再呼叫 LLM
@@ -228,9 +230,9 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
                 item = alerts[orig_idx]
                 alert = item.get("alert", item)
                 trimmed = _trim_alert(alert)
-                examples_summary = _summarize_examples(item.get("examples", []))
                 alert_json = json.dumps(trimmed, ensure_ascii=False, sort_keys=True)
-                cache_key = alert_json + "|" + examples_summary
+                cache_key = hashlib.sha256(alert_json.encode("utf-8", "replace")).hexdigest()
+                examples_summary = _summarize_examples(item.get("examples", []))
                 try:
                     parsed = json.loads(text)
                     # 成功解析則寫入結果並更新快取
