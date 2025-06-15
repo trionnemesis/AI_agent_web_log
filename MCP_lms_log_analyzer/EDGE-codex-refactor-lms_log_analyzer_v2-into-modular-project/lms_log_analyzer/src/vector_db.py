@@ -1,7 +1,6 @@
 from __future__ import annotations
 """簡易的 FAISS 向量儲存，供日誌嵌入使用"""
 
-import hashlib
 import logging
 import os
 from pathlib import Path
@@ -33,18 +32,13 @@ logger = logging.getLogger(__name__)
 def embed(text: str) -> List[float]:
     """取得文字的向量表示
 
-    若系統已安裝 `sentence-transformers` 會直接產生真正的嵌入；
-    否則使用 SHA-256 雜湊計算出假向量，方便在無依賴環境下測試。
+    僅在 `sentence-transformers` 模型載入成功時回傳真正的向量，
+    若模型不可用則直接拋出例外以提醒使用者配置錯誤。
     """
 
-    if SENTENCE_MODEL:
-        return SENTENCE_MODEL.encode(text, convert_to_numpy=True).tolist()
-    digest = hashlib.sha256(text.encode('utf-8', 'replace')).digest()
-    vec_template = list(digest)
-    vec = []
-    while len(vec) < EMBED_DIM:
-        vec.extend(vec_template)
-    return [v / 255.0 for v in vec[:EMBED_DIM]]
+    if not SENTENCE_MODEL:
+        raise RuntimeError("SentenceTransformer model not available")
+    return SENTENCE_MODEL.encode(text, convert_to_numpy=True).tolist()
 
 
 class VectorIndex:
