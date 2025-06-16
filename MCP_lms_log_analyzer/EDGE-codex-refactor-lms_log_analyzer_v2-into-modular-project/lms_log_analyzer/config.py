@@ -57,6 +57,17 @@ WAZUH_ALERTS_URL = os.getenv("WAZUH_ALERTS_URL")
 FILEBEAT_HOST = os.getenv("FILEBEAT_HOST", "0.0.0.0")
 FILEBEAT_PORT = int(os.getenv("FILEBEAT_PORT", 9000))
 
+# OpenSearch 連線與索引設定
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
+OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", 9200))
+OPENSEARCH_USER = os.getenv("OPENSEARCH_USER")
+OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+
+# 各功能使用的索引名稱
+OS_VECTOR_INDEX = os.getenv("OS_VECTOR_INDEX", "lms_vectors")
+OS_RESULT_INDEX = os.getenv("OS_RESULT_INDEX", "analysis_results")
+OS_ALERT_INDEX = os.getenv("OS_ALERT_INDEX", "wazuh-alerts")
+
 # 確保必要的目錄存在，避免首次執行時因目錄缺失而出錯。
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 if LMS_ANALYSIS_OUTPUT_FILE.parent != Path("/var/log"):

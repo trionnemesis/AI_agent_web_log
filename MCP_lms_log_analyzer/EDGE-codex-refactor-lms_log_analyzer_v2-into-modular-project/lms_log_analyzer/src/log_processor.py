@@ -1,7 +1,6 @@
 from __future__ import annotations
 """日誌讀取與分析核心邏輯"""
 
-import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
@@ -12,9 +11,33 @@ from .llm_handler import llm_analyse, COST_TRACKER
 from .vector_db import VECTOR_DB, embed
 from .utils import tail_since, save_state, STATE
 from .wazuh_consumer import get_alerts_for_lines
+from opensearchpy import OpenSearch, helpers
 
 # 模組層級記錄器，供其他函式使用
 logger = logging.getLogger(__name__)
+
+_OS_CLIENT: Optional[OpenSearch] = None
+
+
+def _get_client() -> Optional[OpenSearch]:
+    global _OS_CLIENT
+    if _OS_CLIENT is not None:
+        return _OS_CLIENT
+    try:
+        auth = None
+        if config.OPENSEARCH_USER and config.OPENSEARCH_PASSWORD:
+            auth = (config.OPENSEARCH_USER, config.OPENSEARCH_PASSWORD)
+        _OS_CLIENT = OpenSearch(
+            hosts=[{"host": config.OPENSEARCH_HOST, "port": config.OPENSEARCH_PORT}],
+            http_auth=auth,
+            use_ssl=False,
+            verify_certs=False,
+        )
+        return _OS_CLIENT
+    except Exception as exc:  # pragma: no cover - optional network failure
+        logger.error("OpenSearch connection failed: %s", exc)
+        _OS_CLIENT = None
+        return None
 
 
 def analyse_lines(lines: List[str]) -> List[Dict[str, Any]]:
@@ -75,6 +98,23 @@ def analyse_lines(lines: List[str]) -> List[Dict[str, Any]]:
     VECTOR_DB.save()
     logger.info(f"LLM stats: {COST_TRACKER.get_total_stats()}")
     return exported
+
+
+def index_results(results: List[Dict[str, Any]]) -> None:
+    """將分析結果寫入 OpenSearch"""
+    if not results:
+        return
+    client = _get_client()
+    if client is None:
+        return
+    actions = [
+        {"_op_type": "index", "_index": config.OS_RESULT_INDEX, "_source": r}
+        for r in results
+    ]
+    try:
+        helpers.bulk(client, actions)
+    except Exception as exc:  # pragma: no cover - optional network failure
+        logger.error("OpenSearch write failed: %s", exc)
 
 
 def process_logs(log_paths: List[Path]) -> List[Dict[str, Any]]:

@@ -1,17 +1,13 @@
 from __future__ import annotations
-"""簡易的 FAISS 向量儲存，供日誌嵌入使用"""
+"""OpenSearch k-NN 向量索引介面"""
 
 import logging
 import os
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .. import config
+from opensearchpy import OpenSearch, helpers
 
-try:
-    import faiss
-except ImportError:  # pragma: no cover - optional
-    faiss = None  # type: ignore
+from .. import config
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -30,101 +26,103 @@ logger = logging.getLogger(__name__)
 
 
 def embed(text: str) -> List[float]:
-    """取得文字的向量表示
-
-    僅在 `sentence-transformers` 模型載入成功時回傳真正的向量，
-    若模型不可用則直接拋出例外以提醒使用者配置錯誤。
-    """
-
+    """取得文字向量表示"""
     if not SENTENCE_MODEL:
         raise RuntimeError("SentenceTransformer model not available")
     return SENTENCE_MODEL.encode(text, convert_to_numpy=True).tolist()
 
 
 class VectorIndex:
-    """封裝 FAISS Index，負責載入、儲存與查詢"""
+    """OpenSearch k-NN 索引封裝"""
 
-    def __init__(self, path: Path, cases_path: Path, dimension: int) -> None:
-        self.path = path
-        self.cases_path = cases_path
+    def __init__(self, index_name: str, dimension: int) -> None:
+        self.index_name = index_name
         self.dimension = dimension
-        self.index: Optional[faiss.Index] = None  # type: ignore
-        self.cases: List[Dict[str, Any]] = []
-        self._load()
-        self._load_cases()
+        self.client: Optional[OpenSearch] = None
+        self.index = None
+        self._connect()
 
-    def _load(self):
-        """讀取既有索引檔，如無則建立新索引"""
-
-        if faiss is None:
-            logger.warning("Faiss not installed; vector search disabled")
-            return
-        if self.path.exists():
-            try:
-                self.index = faiss.read_index(str(self.path))
-                logger.info(f"Loaded FAISS index from {self.path}")
-            except Exception as e:
-                logger.error(f"Failed loading FAISS index: {e}")
-                self.index = faiss.IndexFlatL2(self.dimension)
-        else:
-            self.index = faiss.IndexFlatL2(self.dimension)
-
-    def _load_cases(self):
-        """載入歷史案例"""
-
-        if self.cases_path.exists():
-            try:
-                import json
-
-                self.cases = json.loads(self.cases_path.read_text(encoding="utf-8"))
-                logger.info(f"Loaded cases from {self.cases_path}")
-            except Exception as e:  # pragma: no cover - optional
-                logger.error(f"Failed loading cases: {e}")
-                self.cases = []
-
-    def save(self):
-        """將索引與案例寫入磁碟"""
-
-        if faiss and self.index is not None:
-            try:
-                faiss.write_index(self.index, str(self.path))
-                logger.info(f"Saved FAISS index to {self.path}")
-            except Exception as e:
-                logger.error(f"Failed saving FAISS index: {e}")
-
+    def _connect(self) -> None:
         try:
-            import json
-
-            self.cases_path.write_text(
-                json.dumps(self.cases, ensure_ascii=False, indent=2), encoding="utf-8"
+            auth = None
+            if config.OPENSEARCH_USER and config.OPENSEARCH_PASSWORD:
+                auth = (config.OPENSEARCH_USER, config.OPENSEARCH_PASSWORD)
+            self.client = OpenSearch(
+                hosts=[{"host": config.OPENSEARCH_HOST, "port": config.OPENSEARCH_PORT}],
+                http_auth=auth,
+                use_ssl=False,
+                verify_certs=False,
             )
-        except Exception as e:  # pragma: no cover - optional
-            logger.error(f"Failed saving cases file: {e}")
+            self.index = self.client
+            self._ensure_index()
+        except Exception as exc:  # pragma: no cover - optional network failure
+            logger.error("OpenSearch connection failed: %s", exc)
+            self.client = None
+            self.index = None
 
-    def search(self, vec: List[float], k: int = 5) -> Tuple[List[int], List[float]]:
-        """在索引中搜尋並回傳 (ids, 距離)"""
+    def _ensure_index(self) -> None:
+        if not self.client:
+            return
+        try:
+            if not self.client.indices.exists(self.index_name):
+                body = {
+                    "settings": {"index": {"knn": True}},
+                    "mappings": {
+                        "properties": {
+                            "embedding": {"type": "knn_vector", "dimension": self.dimension},
+                            "log": {"type": "text"},
+                            "analysis": {"type": "object"},
+                        }
+                    },
+                }
+                self.client.indices.create(index=self.index_name, body=body)
+        except Exception as exc:  # pragma: no cover - optional network failure
+            logger.error("Failed creating OpenSearch index: %s", exc)
 
-        import numpy as np
-        if faiss is None or self.index is None or self.index.ntotal == 0:
+    def save(self) -> None:  # pragma: no cover - compatibility
+        """與舊介面相容，OpenSearch 無需另存檔案"""
+        return
+
+    def search(self, vec: List[float], k: int = 5) -> Tuple[List[str], List[float]]:
+        if not self.client:
             return [], []
-        q = np.array([vec], dtype=np.float32)
-        dists, ids = self.index.search(q, k)
-        return ids[0].tolist(), dists[0].tolist()
+        try:
+            body = {"size": k, "query": {"knn": {"embedding": {"vector": vec, "k": k}}}}
+            resp = self.client.search(index=self.index_name, body=body)
+            hits = resp.get("hits", {}).get("hits", [])
+            ids = [h["_id"] for h in hits]
+            scores = [h["_score"] for h in hits]
+            return ids, scores
+        except Exception as exc:  # pragma: no cover - optional network failure
+            logger.error("OpenSearch search failed: %s", exc)
+            return [], []
 
-    def add(self, vecs: List[List[float]], cases: List[Dict[str, Any]]):
-        """新增多個向量與對應案例至索引"""
+    def add(self, vecs: List[List[float]], cases: List[Dict[str, Any]]) -> None:
+        if not self.client:
+            return
+        actions = [
+            {"_op_type": "index", "_index": self.index_name, "_source": {"embedding": v, **c}}
+            for v, c in zip(vecs, cases)
+        ]
+        try:
+            helpers.bulk(self.client, actions)
+        except Exception as exc:  # pragma: no cover - optional network failure
+            logger.error("OpenSearch add failed: %s", exc)
 
-        import numpy as np
+    def get_cases(self, ids: List[str]) -> List[Dict[str, Any]]:
+        if not self.client or not ids:
+            return []
+        try:
+            resp = self.client.mget(index=self.index_name, body={"ids": ids})
+            cases = []
+            for doc in resp.get("docs", []):
+                if doc.get("found"):
+                    src = doc.get("_source", {})
+                    cases.append({"log": src.get("log"), "analysis": src.get("analysis")})
+            return cases
+        except Exception as exc:  # pragma: no cover - optional network failure
+            logger.error("OpenSearch get_cases failed: %s", exc)
+            return []
 
-        if faiss and self.index is not None:
-            to_add = np.array(vecs, dtype=np.float32)
-            self.index.add(to_add)
-        self.cases.extend(cases)
 
-    def get_cases(self, ids: List[int]) -> List[Dict[str, Any]]:
-        """根據索引 ID 取得案例資訊"""
-
-        return [self.cases[i] for i in ids if 0 <= i < len(self.cases)]
-
-
-VECTOR_DB = VectorIndex(config.VECTOR_DB_PATH, config.CASE_DB_PATH, EMBED_DIM)
+VECTOR_DB = VectorIndex(config.OS_VECTOR_INDEX, EMBED_DIM)
