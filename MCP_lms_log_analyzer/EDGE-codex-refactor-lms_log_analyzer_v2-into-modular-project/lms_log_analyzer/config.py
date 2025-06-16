@@ -7,13 +7,10 @@ import os
 from pathlib import Path
 
 # 儲存持久化資料的根目錄。可透過 ``LMS_HOME`` 調整專案位置而不必改程式碼。
-# ``data`` 子目錄用來放置 FAISS 向量索引及檔案狀態。
+# ``data`` 子目錄主要存放狀態檔案等持久化資料。
 BASE_DIR = Path(os.getenv("LMS_HOME", Path(__file__).resolve().parent)).resolve()
 DATA_DIR = BASE_DIR / "data"
 LOG_STATE_FILE = DATA_DIR / "file_state.json"
-VECTOR_DB_PATH = DATA_DIR / "faiss.index"
-# 儲存每筆向量對應的歷史案例（包含原始日誌與分析結果）
-CASE_DB_PATH = DATA_DIR / "cases.json"
 
 # 日誌與輸出結果的路徑，預設位於 ``/var/log``，亦可透過環境變數覆寫。
 DEFAULT_TARGET_LOG_DIR = "/var/log/LMS_LOG"
@@ -53,9 +50,17 @@ WAZUH_ENABLED = bool(WAZUH_API_URL and WAZUH_API_USER and WAZUH_API_PASSWORD)
 WAZUH_ALERTS_FILE = os.getenv("WAZUH_ALERTS_FILE")
 WAZUH_ALERTS_URL = os.getenv("WAZUH_ALERTS_URL")
 
-# Filebeat HTTP 伺服器設定
-FILEBEAT_HOST = os.getenv("FILEBEAT_HOST", "0.0.0.0")
-FILEBEAT_PORT = int(os.getenv("FILEBEAT_PORT", 9000))
+
+# OpenSearch 連線與索引設定
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
+OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", 9200))
+OPENSEARCH_USER = os.getenv("OPENSEARCH_USER")
+OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+
+# 各功能使用的索引名稱
+OS_VECTOR_INDEX = os.getenv("OS_VECTOR_INDEX", "lms_vectors")
+OS_RESULT_INDEX = os.getenv("OS_RESULT_INDEX", "analysis_results")
+OS_ALERT_INDEX = os.getenv("OS_ALERT_INDEX", "wazuh-alerts")
 
 # 確保必要的目錄存在，避免首次執行時因目錄缺失而出錯。
 DATA_DIR.mkdir(parents=True, exist_ok=True)
