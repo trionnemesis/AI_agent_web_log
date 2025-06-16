@@ -226,7 +226,7 @@ VIII. 專案進度與未來展望
 已完成項目
 以下是根據初期規劃，目前已在專案中實現的功能：
 
-進階向量搜尋: 已導入 faiss-cpu 與 sentence-transformers，實現了高效的本地向量相似度搜尋。
+進階向量搜尋: 已導入 OpenSearch k-NN 與 sentence-transformers，實現了可擴充的向量相似度搜尋。
 壓縮日誌處理: 系統能自動讀取並處理 .gz 與 .bz2 格式的壓縮日誌。
 狀態管理與日誌輪替: 透過追蹤檔案 inode 與讀取位移，能穩定處理日誌輪替 (Log Rotation) 而不遺漏或重複。
 錯誤處理與韌性: 關鍵的網路I/O（如 LLM 與 Wazuh API 呼叫）已加上具備指數退讓的重試機制。
