@@ -1,83 +1,59 @@
 from __future__ import annotations
-"""Wazuh 告警消費者（正式環境用）。"""
+"""從 OpenSearch 取得 Wazuh 告警"""
 
 
-import json
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import requests
-
-from .utils import retry_with_backoff
+from opensearchpy import OpenSearch
 
 from .. import config
 
 logger = logging.getLogger(__name__)
 
-# 紀錄檔案來源的讀取位置
-_FILE_OFFSET = 0
+_CLIENT: Optional[OpenSearch] = None
 
-def _read_from_file() -> List[Dict[str, Any]]:
-    """自設定的檔案讀取新增的告警"""
-    path_str = config.WAZUH_ALERTS_FILE
-    if not path_str:
-        return []
-    path = Path(path_str)
-    if not path.exists():
-        return []
-    global _FILE_OFFSET
-    alerts = []
-    with path.open("r", encoding="utf-8") as f:
-        f.seek(_FILE_OFFSET)
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                alerts.append(json.loads(line))
-            except json.JSONDecodeError:
-                logger.error("無法解析的告警 JSON：%s", line)
-        _FILE_OFFSET = f.tell()
-    return alerts
 
-def _read_from_http() -> List[Dict[str, Any]]:
-    """從 HTTP 端點取得告警 (應回傳 JSON 陣列)"""
-    url = config.WAZUH_ALERTS_URL
-    if not url:
-        return []
+def _get_client() -> Optional[OpenSearch]:
+    global _CLIENT
+    if _CLIENT is not None:
+        return _CLIENT
     try:
-        resp = retry_with_backoff(requests.get, url, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, list):
-            return data
-        elif isinstance(data, dict):
-            return data.get("alerts", [])
-        return []
+        auth = None
+        if config.OPENSEARCH_USER and config.OPENSEARCH_PASSWORD:
+            auth = (config.OPENSEARCH_USER, config.OPENSEARCH_PASSWORD)
+        _CLIENT = OpenSearch(
+            hosts=[{"host": config.OPENSEARCH_HOST, "port": config.OPENSEARCH_PORT}],
+            http_auth=auth,
+            use_ssl=False,
+            verify_certs=False,
+        )
+        return _CLIENT
     except Exception as exc:  # pragma: no cover - optional network failure
-        logger.error("無法自 %s 取得告警: %s", url, exc)
-        return []
+        logger.error("OpenSearch connection failed: %s", exc)
+        _CLIENT = None
+        return None
 
 def get_alerts_for_lines(lines: List[str]) -> List[Dict[str, Any]]:
-    """比對並回傳與指定日誌行相符的告警"""
+    """依照 log 內容查詢 OpenSearch 中的 Wazuh 告警"""
     if not lines:
         return []
-    alerts = []
-    alerts.extend(_read_from_file())
-    alerts.extend(_read_from_http())
-    if not alerts:
+    client = _get_client()
+    if client is None:
         return []
-
-    alert_map: Dict[str, List[Dict[str, Any]]] = {}
-    for alert in alerts:
-        original = alert.get("full_log") or alert.get("original_log")
-        if not original:
-            continue
-        alert_map.setdefault(original, []).append(alert)
-
-    matched = []
-    for line in lines:
-        for alert in alert_map.get(line, []):
-            matched.append({"line": line, "alert": alert})
-    return matched
+    try:
+        query = {
+            "size": len(lines),
+            "query": {"bool": {"filter": {"terms": {"full_log.keyword": lines}}}},
+        }
+        resp = client.search(index=config.OS_ALERT_INDEX, body=query)
+        hits = resp.get("hits", {}).get("hits", [])
+        matched = []
+        for h in hits:
+            src = h.get("_source", {})
+            line = src.get("full_log") or src.get("original_log")
+            matched.append({"line": line, "alert": src})
+        return matched
+    except Exception as exc:  # pragma: no cover - optional network failure
+        logger.error("OpenSearch query failed: %s", exc)
+        return []
