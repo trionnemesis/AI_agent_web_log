@@ -18,10 +18,12 @@ try:
     from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.prompts import PromptTemplate
     from langchain_core.runnables import Runnable
+    from langchain_core.messages import AIMessage
 except ImportError:  # pragma: no cover - optional
     ChatGoogleGenerativeAI = None
     PromptTemplate = None
     Runnable = None
+    AIMessage = None
 
 # 模組記錄器，提供除錯與成本追蹤資訊
 logger = logging.getLogger(__name__)
@@ -53,7 +55,10 @@ Wazuh Alert JSON:
 
 JSON Output:
 """
-        PROMPT = PromptTemplate(input_variables=["alert_json", "examples_summary"], template=PROMPT_TEMPLATE_STR)
+        PROMPT = PromptTemplate(
+            input_variables=["alert_json", "examples_summary"],
+            template=PROMPT_TEMPLATE_STR
+        )
         LLM_CHAIN = PROMPT | llm  # type: ignore
         logger.info(f"LLM ({config.LLM_MODEL_NAME}) initialized")
     except Exception as e:  # pragma: no cover - optional
@@ -87,9 +92,8 @@ class LLMCostTracker:
             self.cost_hourly = 0.0
             self.hour_start_ts = time.time()
 
-    def add_usage(self, in_tok: int, out_tok: int):
+    def add_usage(self, in_tok: int, out_tok: int) -> None:
         """記錄一次呼叫的 Token 數量"""
-
         self._maybe_reset_hour()
 
         self.in_tokens_hourly += in_tok
@@ -118,7 +122,7 @@ class LLMCostTracker:
             "cost_usd": self.cost_hourly,
         }
 
-    def get_total_stats(self) -> dict:
+    def get_total_stats(self) -> Dict[str, Any]:
         """回傳跨執行期間的總體使用統計"""
         return {
             "total_input_tokens": self.total_in_tokens,
@@ -131,8 +135,7 @@ COST_TRACKER = LLMCostTracker()
 
 
 def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
-
-
+    """修剪告警資料，只保留必要欄位"""
     rule = alert.get("rule", {})
     trimmed = {
         "rule": {
@@ -144,6 +147,7 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
     original = alert.get("full_log") or alert.get("original_log")
     if original:
         trimmed["original_log"] = original
+    
     data = alert.get("data", {})
     for key in ("srcip", "dstip", "srcport", "dstport"):
         value = data.get(key)
@@ -153,7 +157,10 @@ def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
-
+    """將歷史案例摘要為可讀格式"""
+    if not examples:
+        return "無歷史案例"
+    
     parts = []
     for ex in examples:
         analysis = ex.get("analysis", {})
@@ -162,22 +169,28 @@ def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
         if not attack_type and not reason:
             continue
         parts.append(f"歷史攻擊: {attack_type} | 理由: {reason}".strip())
-    return "\n".join(parts)
+    
+    return "\n".join(parts) if parts else "無有效歷史案例"
 
 
-def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
+def _count_tokens_estimate(text: str) -> int:
+    """估算文字的 Token 數量（簡化版本）"""
+    # 簡化的 token 計算，實際應使用對應模型的 tokenizer
+    return len(text.split())
+
+
+def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[Dict[str, Any]]]:
     """使用 LLM 分析告警並回傳 JSON 結果
 
     若同一筆資料先前已分析過，將從快取取得結果以節省費用；
     當 LLM 停用或超過本小時預算時，會回傳預設結果而不呼叫 API。
     """
-
     if not LLM_CHAIN:
         logger.warning("LLM disabled")
         return [None] * len(alerts)
 
     # 預先建立結果陣列與要查詢的索引
-    results: List[Optional[dict]] = [None] * len(alerts)
+    results: List[Optional[Dict[str, Any]]] = [None] * len(alerts)
     indices_to_query: List[int] = []
     batch_inputs: List[Dict[str, str]] = []
 
@@ -187,6 +200,7 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
         alert_json = json.dumps(trimmed, ensure_ascii=False, sort_keys=True)
         cache_key = hashlib.sha256(alert_json.encode("utf-8", "replace")).hexdigest()
         cached = CACHE.get(cache_key)
+        
         if cached is not None:
             # 若已在快取中，直接使用
             results[idx] = cached
@@ -194,10 +208,14 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
 
         examples_summary = _summarize_examples(item.get("examples", []))
         indices_to_query.append(idx)
-        batch_inputs.append({"alert_json": alert_json, "examples_summary": examples_summary})
+        batch_inputs.append({
+            "alert_json": alert_json, 
+            "examples_summary": examples_summary
+        })
 
     if not batch_inputs:
         # 全部都有快取，不需再呼叫 LLM
+        logger.info("All alerts found in cache, no LLM calls needed")
         return results
 
     if COST_TRACKER.get_hourly_cost() >= config.MAX_HOURLY_COST_USD:
@@ -213,43 +231,80 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
         return results
 
     try:
-
         total_in = 0
         total_out = 0
+        
         for start in range(0, len(batch_inputs), config.BATCH_SIZE):
             chunk = batch_inputs[start : start + config.BATCH_SIZE]
             chunk_indices = indices_to_query[start : start + config.BATCH_SIZE]
+            
             responses = retry_with_backoff(
                 LLM_CHAIN.batch,
                 chunk,
                 config={"max_concurrency": 5},
             )  # type: ignore
+            
             for i, resp in enumerate(responses):
                 orig_idx = chunk_indices[i]
-                text = resp.content if hasattr(resp, "content") else resp
+                
+                # 處理不同類型的回應
+                if hasattr(resp, 'content'):
+                    text = resp.content
+                elif isinstance(resp, str):
+                    text = resp
+                else:
+                    text = str(resp)
+                
                 item = alerts[orig_idx]
                 alert = item.get("alert", item)
                 trimmed = _trim_alert(alert)
                 alert_json = json.dumps(trimmed, ensure_ascii=False, sort_keys=True)
                 cache_key = hashlib.sha256(alert_json.encode("utf-8", "replace")).hexdigest()
                 examples_summary = _summarize_examples(item.get("examples", []))
+                
                 try:
-                    parsed = json.loads(text)
+                    # 清理回應文字，移除可能的前後綴
+                    clean_text = text.strip()
+                    if clean_text.startswith('```json'):
+                        clean_text = clean_text[7:]
+                    if clean_text.endswith('```'):
+                        clean_text = clean_text[:-3]
+                    clean_text = clean_text.strip()
+                    
+                    parsed = json.loads(clean_text)
+                    
+                    # 驗證必要欄位
+                    required_fields = ["is_attack", "attack_type", "reason", "severity"]
+                    if not all(field in parsed for field in required_fields):
+                        raise ValueError(f"Missing required fields in LLM response")
+                    
                     # 成功解析則寫入結果並更新快取
                     results[orig_idx] = parsed
                     CACHE.put(cache_key, parsed)
-                    total_in += len(PROMPT.format(alert_json=alert_json, examples_summary=examples_summary).split())  # type: ignore
-                    total_out += len(text.split())
-                except json.JSONDecodeError as e:
+                    
+                    # 估算 token 使用量
+                    prompt_text = PROMPT.format(
+                        alert_json=alert_json,
+                        examples_summary=examples_summary
+                    )  # type: ignore
+                    total_in += _count_tokens_estimate(prompt_text)
+                    total_out += _count_tokens_estimate(text)
+                    
+                except (json.JSONDecodeError, ValueError) as e:
                     logger.error(f"Failed parsing LLM response: {e}")
+                    logger.debug(f"Raw response: {text}")
                     results[orig_idx] = {
                         "is_attack": True,
                         "attack_type": "LLM Parse Error",
-                        "reason": str(e),
+                        "reason": f"Response parsing failed: {str(e)}",
                         "severity": "Medium",
                     }
+        
         # 紀錄本次批次的 Token 使用量
-        COST_TRACKER.add_usage(total_in, total_out)
+        if total_in > 0 or total_out > 0:
+            COST_TRACKER.add_usage(total_in, total_out)
+            logger.info(f"LLM usage: {total_in} input tokens, {total_out} output tokens")
+            
     except Exception as e:  # pragma: no cover - optional
         # API 呼叫失敗，回傳錯誤資訊
         logger.error(f"LLM batch call failed: {e}")
@@ -257,7 +312,8 @@ def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[dict]]:
             results[i] = {
                 "is_attack": True,
                 "attack_type": "LLM API Error",
-                "reason": str(e),
+                "reason": f"API call failed: {str(e)}",
                 "severity": "High",
             }
+    
     return results
