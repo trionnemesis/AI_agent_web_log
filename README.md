@@ -115,10 +115,19 @@ III. 技術與主要工具
 本專案基於以下技術與工具建構而成：
 
 程式語言:
-
 Python 3.8+: 作為主要的開發語言。
 核心函式庫:
-
+langchain-google-genai & langchain-core: 用於串接 Google Gemini 模型。
+sentence-transformers: 用於將日誌文本轉換為語義向量。
+faiss-cpu: 用於高效的本地向量相似度搜尋。
+requests: 用於呼叫外部 API。
+pytest: 用於執行單元測試與整合測試。
+整合服務:
+Google Gemini: 作為核心分析引擎的大型語言模型。
+Wazuh: (可選) 作為主要的資安告警來源與日誌的前置過濾器。
+Filebeat: (可選) 作為收集與轉發即時日誌的代理程式。
+開發與維運:
+GitHub Actions: 用於實現 CI/CD，自動化執行測試。
 LangChain: 用於快速建構 LLM 應用，管理與串聯提示 (Prompt)、模型 (LLM) 與輸出解析 (Output Parser)。
 Sentence Transformers: 用於將日誌文本轉換為高品質的語義向量 (Embeddings)。
 FAISS (Facebook AI Similarity Search): 由 Facebook AI 開發的高效相似度搜尋函式庫，用於本地向量儲存與檢索。
