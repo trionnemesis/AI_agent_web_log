@@ -39,21 +39,27 @@ if config.GEMINI_API_KEY and ChatGoogleGenerativeAI and PromptTemplate:
             convert_system_message_to_human=True,
         )
         PROMPT_TEMPLATE_STR = """
-System: 你是一位資安分析助手。你將收到來自 Wazuh 的告警 JSON，以及若干歷史案例供參考。請綜合評估是否存在潛在攻擊或異常活動。
+System: 你是一位經驗豐富的 SOC 資安分析師。你將收到一份 Wazuh 告警 (僅保留關鍵欄位)，以及若干歷史案例的精簡摘要。請依下列思考流程進行判斷：
+1. 研讀告警中的 IP、Port、Rule 描述與原始日誌，推論可能的威脅情境。
+2. 與歷史案例比對相似度，參考其攻擊類型與推論理由。
+3. 綜合 (1)(2) 給出是否屬於攻擊、攻擊類型、嚴重度，並以簡潔中文說明判斷依據。
 
-歷史案例摘要：
+注意事項：
+- 務必依照 JSON Schema 回傳，不要加入多餘文字。
+- 若無足夠證據，請謹慎標記 is_attack = false，並在 reason 中說明疑慮。
+- severity 嚴重度建議：Critical | High | Medium | Low | None。
+
+歷史案例摘要 (最多 5 筆，每行一例)：
 {examples_summary}
 
-Wazuh Alert JSON:
+Wazuh Alert (精簡)：
 {alert_json}
 
-請回傳以下欄位組成的 JSON：
+請僅輸出以下 JSON (不要加上 markdown 標記)：
 - "is_attack": boolean
 - "attack_type": string
-- "reason": string
+- "reason": string (≤120 字，內含你的簡要思考過程)
 - "severity": string
-
-JSON Output:
 """
         PROMPT = PromptTemplate(
             input_variables=["alert_json", "examples_summary"],
@@ -135,41 +141,67 @@ COST_TRACKER = LLMCostTracker()
 
 
 def _trim_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
-    """修剪告警資料，只保留必要欄位"""
+    """將告警資料縮減至最關鍵欄位，以節省 Token
+
+    保留：
+    - rule.id / rule.description / rule.level
+    - srcip, dstip, srcport, dstport
+    - original_log (折疊多餘空白並截斷過長內容)
+    """
     rule = alert.get("rule", {})
-    trimmed = {
+    trimmed: Dict[str, Any] = {
         "rule": {
             "id": rule.get("id"),
             "description": rule.get("description"),
             "level": rule.get("level"),
         }
     }
+
+    # IP 與 Port 資訊
+    data = alert.get("data", {})
+    ip_port = {k: v for k, v in (
+        ("srcip", data.get("srcip")),
+        ("dstip", data.get("dstip")),
+        ("srcport", data.get("srcport")),
+        ("dstport", data.get("dstport")),
+    ) if v}
+    if ip_port:
+        trimmed["data"] = ip_port
+
+    # 原始日誌 (移除多餘空白並限制長度)
     original = alert.get("full_log") or alert.get("original_log")
     if original:
-        trimmed["original_log"] = original
-    
-    data = alert.get("data", {})
-    for key in ("srcip", "dstip", "srcport", "dstport"):
-        value = data.get(key)
-        if value is not None:
-            trimmed.setdefault("data", {})[key] = value
+        compact = " ".join(str(original).split())
+        if len(compact) > 300:
+            compact = compact[:300] + "..."
+        trimmed["original_log"] = compact
+
     return trimmed
 
 
-def _summarize_examples(examples: List[Dict[str, Any]]) -> str:
-    """將歷史案例摘要為可讀格式"""
+def _summarize_examples(examples: List[Dict[str, Any]], *, max_examples: int = 5, max_reason_len: int = 80) -> str:
+    """將歷史案例摘要為高資訊密度的一行文字，最多 `max_examples` 筆。
+
+    每行格式：
+    歷史攻擊: {attack_type} | 嚴重度: {severity} | 理由: {reason}
+    """
     if not examples:
         return "無歷史案例"
-    
-    parts = []
-    for ex in examples:
+
+    parts: List[str] = []
+    for ex in examples[:max_examples]:
         analysis = ex.get("analysis", {})
-        attack_type = analysis.get("attack_type", "")
+        attack_type = analysis.get("attack_type", "未知")
+        severity = analysis.get("severity", "")
         reason = analysis.get("reason", "")
-        if not attack_type and not reason:
-            continue
-        parts.append(f"歷史攻擊: {attack_type} | 理由: {reason}".strip())
-    
+        if len(reason) > max_reason_len:
+            reason = reason[:max_reason_len] + "..."
+        summary = f"歷史攻擊: {attack_type}"
+        if severity:
+            summary += f" | 嚴重度: {severity}"
+        summary += f" | 理由: {reason}"
+        parts.append(summary)
+
     return "\n".join(parts) if parts else "無有效歷史案例"
 
 
