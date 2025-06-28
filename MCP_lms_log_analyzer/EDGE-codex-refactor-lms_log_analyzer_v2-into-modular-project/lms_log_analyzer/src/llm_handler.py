@@ -211,6 +211,9 @@ def _count_tokens_estimate(text: str) -> int:
     return len(text.split())
 
 
+def _generate_cache_key(alert: Dict[str, Any], examples: List[Dict[str, Any]]) -> str:
+    """生成快取鍵值，包含告警和歷史案例的內容"""
+    # 將告警和歷史案例合併為一個字典來生成快取鍵
 def llm_analyse(alerts: List[Dict[str, Any]]) -> List[Optional[Dict[str, Any]]]:
     """使用 LLM 分析告警並回傳 JSON 結果
 

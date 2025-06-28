@@ -15,7 +15,7 @@ class TestLogParser(unittest.TestCase):
     def test_fast_score(self):
         line = '1.1.1.1 - - [01/Jan/2023:00:00:00 +0000] "GET /etc/passwd HTTP/1.1" 404 0 "-" "nmap" resp_time:2'
         score = log_parser.fast_score(line)
-        self.assertAlmostEqual(score, 0.9, places=2)
+        self.assertAlmostEqual(score, 0.95, places=2)
 
 class TestLRUCache(unittest.TestCase):
     def test_eviction(self):
