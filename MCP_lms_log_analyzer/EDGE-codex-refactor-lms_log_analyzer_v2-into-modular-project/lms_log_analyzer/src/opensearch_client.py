@@ -60,8 +60,12 @@ class OpenSearchClient:
             max_retries=3
         )
         
-        # 初始化索引
-        self._init_indices()
+        # 初始化索引（在測試環境中可能需要跳過）
+        if os.getenv("SKIP_OPENSEARCH_INIT") != "true":
+            try:
+                self._init_indices()
+            except Exception as e:
+                logger.warning(f"無法初始化索引: {e}")
     
     def _init_indices(self):
         """初始化必要的索引"""

@@ -35,6 +35,13 @@ jobs:
     - name: Test with pytest
       # 1. 將工作目錄設定為包含 lms_log_analyzer 和 tests 的父目錄
       working-directory: ./MCP_lms_log_analyzer/EDGE-codex-refactor-lms_log_analyzer_v2-into-modular-project
+      env:
+        # 跳過 OpenSearch 初始化，避免在測試環境中連接真實的 OpenSearch
+        SKIP_OPENSEARCH_INIT: "true"
+        # 設定其他必要的環境變數
+        GEMINI_API_KEY: "test-api-key"
+        OPENSEARCH_HOST: "localhost"
+        OPENSEARCH_PORT: "9200"
       run: |
         # 2. 將包含 src 的 lms_log_analyzer 目錄加入 PYTHONPATH
         #    這讓 tests/ 中的測試檔案可以透過 'from src import ...' 找到模組
