@@ -17,7 +17,15 @@ class LLMHandlerTest(unittest.TestCase):
         self.orig_prompt = getattr(llm_handler, "PROMPT", None)
         self.orig_cost = llm_handler.COST_TRACKER.get_hourly_cost
         llm_handler.LLM_CHAIN = MagicMock()
-        llm_handler.LLM_CHAIN.batch.return_value = [json.dumps({"is_attack": False})]
+        # 修正：提供完整的 LLM 回應格式，包含所有必要欄位
+        llm_handler.LLM_CHAIN.batch.return_value = [
+            json.dumps({
+                "is_attack": False,
+                "attack_type": "N/A",
+                "reason": "Test response",
+                "severity": "None"
+            })
+        ]
         llm_handler.PROMPT = DummyPrompt()
         llm_handler.CACHE = LRUCache(10)
 
@@ -78,6 +86,34 @@ class LLMHandlerTest(unittest.TestCase):
         alerts = [{"alert": {"rule": {"id": 1}}, "examples": []}]
         result = llm_handler.llm_analyse(alerts)
         self.assertEqual(result, [None])
+
+    def test_llm_analyse_invalid_response(self):
+        """測試 LLM 回應格式不正確時的處理"""
+        # 模擬 LLM 回傳格式不正確的 JSON
+        llm_handler.LLM_CHAIN.batch.return_value = [
+            json.dumps({"is_attack": False})  # 缺少必要欄位
+        ]
+        
+        alerts = [{"alert": {"rule": {"id": 1}}, "examples": []}]
+        with patch("lms_log_analyzer.src.llm_handler.retry_with_backoff", side_effect=lambda f, *a, **k: f(*a, **k)):
+            result = llm_handler.llm_analyse(alerts)
+        
+        # 應該回傳預設值或 None，而不是拋出例外
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 1)
+
+    def test_llm_analyse_malformed_json(self):
+        """測試 LLM 回傳非 JSON 格式時的處理"""
+        # 模擬 LLM 回傳非 JSON 格式
+        llm_handler.LLM_CHAIN.batch.return_value = ["invalid json response"]
+        
+        alerts = [{"alert": {"rule": {"id": 1}}, "examples": []}]
+        with patch("lms_log_analyzer.src.llm_handler.retry_with_backoff", side_effect=lambda f, *a, **k: f(*a, **k)):
+            result = llm_handler.llm_analyse(alerts)
+        
+        # 應該優雅地處理錯誤，回傳預設值
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 1)
 
 
 if __name__ == "__main__":
