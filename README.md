@@ -9,8 +9,22 @@
 ## II. 系統架構
 
 ### 核心組件
+ * 本系統採用模組化設計，主要包含以下幾個核心部分：
+ * 日誌來源 (Log Source):
+ * 批次處理: 定期掃描並處理指定目錄下的日誌檔案（支援 .log, .gz, .bz2）。
+ * 即時處理: 透過 HTTP 端點接收來自 Filebeat 等代理程式的即時日誌流。
+ * 前置處理與過濾 (Preprocessor & Filter):
+ * Wazuh 告警整合: 可整合 Wazuh，優先分析由 Wazuh 判斷為可疑的日誌，有效縮小分析範圍。系統可以透過讀取 Wazuh 轉存的告警檔案或從 API 端點獲取告警。
+ * 啟發式評分 (Heuristic Scoring): 透過內建的關鍵字與正則表達式規則，對日誌進行快速評分，篩選出高風險日誌。
+ * 智慧取樣 (Sampling): 僅挑選評分最高的日誌樣本送交 LLM，大幅降低 API 成本。
+ * 核心分析引擎 (Core Analyzer):
+ * 向量化與相似度搜尋: 使用 Sentence Transformers 模型將日誌轉換為向量，並在 FAISS 向量資料庫中尋找相似的歷史攻擊案例。
+ * LLM 分析: 呼叫 Google Gemini 模型，結合當前日誌與歷史案例，進行攻擊判斷、類型分類與原因分析。
+ * 成本控制: 包含結果快取 (Cache)、批次處理 (Batching) 及每小時費用上限，確保成本可控。
+ * 結果輸出 (Output):
+ * 將分析結果以結構化的 JSON 格式寫入檔案中。
 
-本系統採用模組化設計，主要包含以下幾個核心部分：
+**本系統採用模組化設計，主要包含以下幾個核心部分：
 
 1.  **日誌來源 (Log Source)**:
     * **批次處理**: 定期掃描並處理指定目錄下的日誌檔案（支援 `.log`, `.gz`, `.bz2`）。
@@ -40,77 +54,57 @@
 
 ```text
 ┌────────────┐
-│ Log Source │  ← 來自 LMS 系統的 .log/.gz/.bz2 檔案
+│ Log Source │  <── .log/.gz/.bz2 檔案
 └────┬───────┘
      │
-     ▼
-┌──────────────┐
-│  Filebeat    │ ← 監控日誌並透過 HTTP 送出
-└────┬─────────┘
-     │
-     ▼
-┌────────────┐
-│  Parser    │ ← 逐行讀取新日誌、解壓縮、處理編碼
-│ tail_since │
-└────┬───────┘
-     │
-     ▼
-┌───────────────┐
-│ Wazuh Alerts │ ← 由 Wazuh 轉存檔案/端點讀取告警
-│ get_alerts_for_lines()│
-└────┬─────────┘
-     │
-     ▼
-┌──────────────┐
-│ Fast Scorer  │ ← 啟發式快速評分
-│ fast_score() │
-└────┬─────────┘
-     │ top X%
-     ▼
-┌────────────────────┐
-│ Vector Embedder    │ ← 用 sentence-transformers 或 SHA256 偽向量
-│ embed()            │
-└────┬────────────────┘
-     │               ┌────────────────────┐
-     │               │ FAISS Vector Index │ ← 搜尋歷史相似模式
-     ├───────────────▶│ search(), add()    │
-     │               └────────────────────┘
-     ▼
-┌────────────────────┐
-│ Gemini LLM (Langchain) │ ← 分析是否為攻擊行為
-│ llm_analyse()        │
-└────────┬───────────┘
-         │
-         ▼
-┌────────────────────┐
-│ Cache / Token Cost │ ← 避免重複分析 + 成本控制
-│ LRUCache / Tracker │
-└────────┬───────────┘
-         ▼
-┌────────────────────┐
-│ Exporter           │ ← 將分析結果輸出為 JSON
-│ JSON / Log Report  │
-└────────────────────┘
+┌────▼───────┐      ┌─────────────┐
+│  Filebeat  │─HTTP─▶│ filebeat_server │
+└────────────┘      └──────┬──────┘
+                            │ (即時日誌)
+     (批次日誌)             │
+┌────▼───────┐      ┌──────▼──────┐
+│  main.py   │      │ log_processor │ ◀─┐ (核心處理流程)
+└────┬───────┘      └──────┬──────┘   │
+     │                      │          │
+┌────▼───────┐      ┌──────▼──────┐   │
+│ tail_since │      │ wazuh_consumer│ ─ │ (讀取 Wazuh 告警)
+└────────────┘      └─────────────┘
+                            │
+┌────▼──────────────────────▼────┐
+│         Heuristic Scoring        │  (log_parser.fast_score)
+└────────────┬───────────────────┘
+             │ (Top X% Samples)
+             ▼
+┌────────────┐        ┌───────────┐
+│ Vector DB  │◀─┐     │ LLM Handler │ (Gemini)
+│  (FAISS)   │  ├─相似案例─▶│           │
+└────────────┘  │     └─────┬─────┘
+  ▲          │           │ (分析)
+  │ (嵌入)      │           │
+  └───────────┴─────────┘
+                            │
+                       ┌────▼────┐
+                       │  Output │ (JSON)
+                       └─────────┘
 ```
 專案目錄
 ```
 MCP_lms_log_analyzer/
 └─ EDGE-codex-refactor-lms_log_analyzer_v2-into-modular-project/
    ├─ lms_log_analyzer/
-   │  ├─ main.py
-   │  ├─ config.py
-   │  ├─ requirements.txt
+   │  ├─ main.py                 # 批次處理入口點
+   │  ├─ config.py               # 全域設定檔
+   │  ├─ requirements.txt        # 依賴套件
    │  ├─ src/
-   │  │  ├─ filebeat_server.py
-   │  │  ├─ llm_handler.py
-   │  │  ├─ log_parser.py
-   │  │  ├─ log_processor.py
-   │  │  ├─ utils.py
-   │  │  ├─ vector_db.py
-   │  │  ├─ wazuh_api.py
-   │  │  └─ wazuh_consumer.py
-   │  ├─ data/
-   │  └─ logs/
+   │  │  ├─ filebeat_server.py    # Filebeat 即時處理伺服器
+   │  │  ├─ llm_handler.py        # LLM (Gemini) 互動邏輯
+   │  │  ├─ log_parser.py         # 啟發式日誌評分
+   │  │  ├─ log_processor.py      # 核心分析流程
+   │  │  ├─ utils.py              # 工具函式 (快取、狀態管理)
+   │  │  ├─ vector_db.py          # 向量資料庫 (FAISS)
+   │  │  ├─ wazuh_api.py          # Wazuh Logtest API 工具
+   │  │  └─ wazuh_consumer.py     # 讀取 Wazuh 告警來源
+   │  └─ data/                     # 存放狀態檔與向量索引
    └─ tests/
       ├─ test_integration.py
       ├─ test_llm_handler.py
@@ -121,14 +115,23 @@ III. 技術與主要工具
 本專案基於以下技術與工具建構而成：
 
 程式語言:
-
 Python 3.8+: 作為主要的開發語言。
-核心函式庫:
-
-LangChain: 用於快速建構 LLM 應用，管理與串聯提示 (Prompt)、模型 (LLM) 與輸出解析 (Output Parser)。
-Sentence Transformers: 用於將日誌文本轉換為高品質的語義向量 (Embeddings)。
-FAISS (Facebook AI Similarity Search): 由 Facebook AI 開發的高效相似度搜尋函式庫，用於本地向量儲存與檢索。
-Pytest: 用於驅動專案的單元測試與整合測試。
+* 核心函式庫:
+* langchain-google-genai & langchain-core: 用於串接 Google Gemini 模型。
+* sentence-transformers: 用於將日誌文本轉換為語義向量。
+* faiss-cpu: 用於高效的本地向量相似度搜尋。
+* requests: 用於呼叫外部 API。
+* pytest: 用於執行單元測試與整合測試。
+* 整合服務:
+* Google Gemini: 作為核心分析引擎的大型語言模型。
+* Wazuh: (可選) 作為主要的資安告警來源與日誌的前置過濾器。
+* Filebeat: (可選) 作為收集與轉發即時日誌的代理程式。
+* 開發與維運:
+* GitHub Actions: 用於實現 CI/CD，自動化執行測試。
+* LangChain: 用於快速建構 LLM 應用，管理與串聯提示 (Prompt)、模型 (LLM) 與輸出解析 (Output Parser)。
+* Sentence Transformers: 用於將日誌文本轉換為高品質的語義向量 (Embeddings)。
+* FAISS (Facebook AI Similarity Search): 由 Facebook AI 開發的高效相似度搜尋函式庫，用於本地向量儲存與檢索。
+* Pytest: 用於驅動專案的單元測試與整合測試。
 整合服務:
 
 Google Gemini: 作為核心分析引擎的大型語言模型。
