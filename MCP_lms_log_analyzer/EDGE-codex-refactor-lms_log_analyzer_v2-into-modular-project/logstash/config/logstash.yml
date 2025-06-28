@@ -1,0 +1,18 @@
+# Logstash 配置檔案
+
+# HTTP API 設定
+http.host: "0.0.0.0"
+http.port: 9600
+
+# Pipeline 設定
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# 監控設定
+monitoring.enabled: true
+monitoring.cluster_uuid: "opensearch-cluster"
+
+# 日誌設定
+log.level: info
+path.logs: /usr/share/logstash/logs 

@@ -57,6 +57,27 @@ WAZUH_ALERTS_URL = os.getenv("WAZUH_ALERTS_URL")
 FILEBEAT_HOST = os.getenv("FILEBEAT_HOST", "0.0.0.0")
 FILEBEAT_PORT = int(os.getenv("FILEBEAT_PORT", 9000))
 
+# OpenSearch 設定
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
+OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", 9200))
+OPENSEARCH_USER = os.getenv("OPENSEARCH_USER", "admin")
+OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "admin")
+OPENSEARCH_SSL = os.getenv("OPENSEARCH_SSL", "true").lower() == "true"
+OPENSEARCH_VERIFY_CERTS = os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true"
+
+# OpenSearch 索引名稱
+OPENSEARCH_LOGS_INDEX = os.getenv("OPENSEARCH_LOGS_INDEX", "logs-alerts")
+OPENSEARCH_CASES_INDEX = os.getenv("OPENSEARCH_CASES_INDEX", "analysis-cases")
+
+# 向量搜尋相關設定
+VECTOR_SEARCH_K = int(os.getenv("VECTOR_SEARCH_K", 5))
+VECTOR_MIN_SCORE = float(os.getenv("VECTOR_MIN_SCORE", 0.0))
+CASE_QUALITY_THRESHOLD = float(os.getenv("CASE_QUALITY_THRESHOLD", 0.8))
+
+# 批次處理設定
+OPENSEARCH_BATCH_SIZE = int(os.getenv("OPENSEARCH_BATCH_SIZE", 100))
+LOG_FETCH_INTERVAL = int(os.getenv("LOG_FETCH_INTERVAL", 60))  # 秒
+
 # 確保必要的目錄存在，避免首次執行時因目錄缺失而出錯。
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 if LMS_ANALYSIS_OUTPUT_FILE.parent != Path("/var/log"):
