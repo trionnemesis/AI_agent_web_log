@@ -8,7 +8,7 @@ import sys
 import json
 import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, PropertyMock
 
 # 添加專案路徑
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,20 +37,32 @@ class TestOpenSearchIntegration:
     @patch('lms_log_analyzer.src.opensearch_client.OpenSearch')
     def test_indices(self, mock_opensearch):
         """測試索引是否正確建立"""
-        # 模擬 OpenSearch 客戶端
-        mock_client_instance = MagicMock()
-        mock_client_instance.indices.exists.side_effect = lambda index: index in [
-            config.OPENSEARCH_LOGS_INDEX,
-            config.OPENSEARCH_CASES_INDEX
-        ]
-        mock_opensearch.return_value = mock_client_instance
+        # 暫時移除 SKIP_OPENSEARCH_INIT 環境變數以測試索引建立
+        original_env = os.environ.get("SKIP_OPENSEARCH_INIT")
+        os.environ.pop("SKIP_OPENSEARCH_INIT", None)
         
-        client = get_opensearch_client()
-        
-        # 檢查索引存在性的呼叫
-        exists_calls = mock_client_instance.indices.exists.call_args_list
-        assert any(call[0][0] == config.OPENSEARCH_LOGS_INDEX for call in exists_calls)
-        assert any(call[0][0] == config.OPENSEARCH_CASES_INDEX for call in exists_calls)
+        try:
+            # 模擬 OpenSearch 客戶端
+            mock_client_instance = MagicMock()
+            mock_client_instance.indices.exists.side_effect = lambda index: False  # 模擬索引不存在
+            mock_client_instance.indices.create.return_value = {"acknowledged": True}
+            mock_opensearch.return_value = mock_client_instance
+            
+            client = get_opensearch_client()
+            
+            # 檢查索引存在性的呼叫
+            exists_calls = mock_client_instance.indices.exists.call_args_list
+            create_calls = mock_client_instance.indices.create.call_args_list
+            
+            # 應該檢查兩個索引是否存在
+            assert len(exists_calls) >= 2
+            # 應該建立兩個索引
+            assert len(create_calls) >= 2
+            
+        finally:
+            # 恢復環境變數
+            if original_env is not None:
+                os.environ["SKIP_OPENSEARCH_INIT"] = original_env
     
     @patch('lms_log_analyzer.src.opensearch_client.OpenSearch')
     @patch('lms_log_analyzer.src.opensearch_client.bulk')
@@ -58,7 +70,11 @@ class TestOpenSearchIntegration:
         """測試日誌操作"""
         # 模擬 OpenSearch 客戶端
         mock_client_instance = MagicMock()
-        mock_client_instance.index.return_value = {"_id": "test-log-id"}
+        
+        # 使用真實的字典作為返回值，避免 MagicMock 的 __getitem__ 問題
+        index_response = {"_id": "test-log-id", "_index": "logs-alerts", "_version": 1}
+        mock_client_instance.index = Mock(return_value=index_response)
+        
         mock_client_instance.search.return_value = {
             "hits": {
                 "hits": [
@@ -66,7 +82,10 @@ class TestOpenSearchIntegration:
                 ]
             }
         }
-        mock_client_instance.count.return_value = {"count": 10}
+        
+        count_response = {"count": 10}
+        mock_client_instance.count = Mock(return_value=count_response)
+        
         mock_opensearch.return_value = mock_client_instance
         
         # 模擬 bulk 操作
@@ -115,7 +134,11 @@ class TestOpenSearchIntegration:
         
         # 模擬 OpenSearch 客戶端
         mock_client_instance = MagicMock()
-        mock_client_instance.index.return_value = {"_id": "test-case-id"}
+        
+        # 使用真實的字典作為返回值
+        index_response = {"_id": "test-case-id", "_index": "analysis-cases", "_version": 1}
+        mock_client_instance.index = Mock(return_value=index_response)
+        
         mock_client_instance.search.return_value = {
             "hits": {
                 "hits": [
@@ -162,11 +185,15 @@ class TestOpenSearchIntegration:
         """測試統計功能"""
         # 模擬 OpenSearch 客戶端
         mock_client_instance = MagicMock()
-        mock_client_instance.count.side_effect = [
+        
+        # 使用 Mock 並設定 side_effect 返回真實的字典
+        count_responses = [
             {"count": 100},  # total_logs
             {"count": 60},   # analyzed_logs
             {"count": 20}    # total_cases
         ]
+        mock_client_instance.count = Mock(side_effect=count_responses)
+        
         mock_opensearch.return_value = mock_client_instance
         
         client = get_opensearch_client()
@@ -204,7 +231,9 @@ def test_log_operations():
     """測試日誌操作的簡單版本（用於向後相容）"""
     with patch('lms_log_analyzer.src.opensearch_client.OpenSearch') as mock_opensearch:
         mock_client_instance = MagicMock()
-        mock_client_instance.index.return_value = {"_id": "test-id"}
+        # 使用真實的字典
+        index_response = {"_id": "test-id", "_index": "logs-alerts"}
+        mock_client_instance.index = Mock(return_value=index_response)
         mock_opensearch.return_value = mock_client_instance
         
         client = get_opensearch_client()
@@ -231,9 +260,11 @@ def test_stats():
     """測試統計功能的簡單版本（用於向後相容）"""
     with patch('lms_log_analyzer.src.opensearch_client.OpenSearch') as mock_opensearch:
         mock_client_instance = MagicMock()
-        mock_client_instance.count.side_effect = [
+        # 使用 Mock 並設定 side_effect
+        count_responses = [
             {"count": 100}, {"count": 60}, {"count": 20}
         ]
+        mock_client_instance.count = Mock(side_effect=count_responses)
         mock_opensearch.return_value = mock_client_instance
         
         client = get_opensearch_client()
