@@ -13,12 +13,17 @@ from unittest.mock import Mock, patch, MagicMock, PropertyMock
 # 添加專案路徑
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lms_log_analyzer.src.opensearch_client import get_opensearch_client
+from lms_log_analyzer.src.opensearch_client import get_opensearch_client, OpenSearchClient
 from lms_log_analyzer import config
+import lms_log_analyzer.src.opensearch_client as opensearch_module
 
 
 class TestOpenSearchIntegration:
     """OpenSearch 整合測試類別"""
+    
+    def setup_method(self):
+        """每個測試方法執行前重置全域客戶端"""
+        opensearch_module.opensearch_client = None
     
     @patch('lms_log_analyzer.src.opensearch_client.OpenSearch')
     def test_connection(self, mock_opensearch):
@@ -48,6 +53,8 @@ class TestOpenSearchIntegration:
             mock_client_instance.indices.create.return_value = {"acknowledged": True}
             mock_opensearch.return_value = mock_client_instance
             
+            # 重置全域客戶端以確保使用新的 mock
+            opensearch_module.opensearch_client = None
             client = get_opensearch_client()
             
             # 檢查索引存在性的呼叫
@@ -63,35 +70,34 @@ class TestOpenSearchIntegration:
             # 恢復環境變數
             if original_env is not None:
                 os.environ["SKIP_OPENSEARCH_INIT"] = original_env
+            else:
+                os.environ["SKIP_OPENSEARCH_INIT"] = "true"
     
-    @patch('lms_log_analyzer.src.opensearch_client.OpenSearch')
+    @patch.object(OpenSearchClient, '__init__', lambda self: None)
     @patch('lms_log_analyzer.src.opensearch_client.bulk')
-    def test_log_operations(self, mock_bulk, mock_opensearch):
+    def test_log_operations(self, mock_bulk):
         """測試日誌操作"""
-        # 模擬 OpenSearch 客戶端
-        mock_client_instance = MagicMock()
+        # 建立 OpenSearchClient 實例並手動設定 client 屬性
+        client = OpenSearchClient()
+        mock_client = MagicMock()
+        client.client = mock_client
         
-        # 使用真實的字典作為返回值，避免 MagicMock 的 __getitem__ 問題
-        index_response = {"_id": "test-log-id", "_index": "logs-alerts", "_version": 1}
-        mock_client_instance.index = Mock(return_value=index_response)
-        
-        mock_client_instance.search.return_value = {
+        # 設定 mock 返回值
+        mock_client.index.return_value = {"_id": "test-log-id"}
+        mock_client.search.return_value = {
             "hits": {
                 "hits": [
                     {"_id": "test-id", "_source": {"raw_log": "test log"}}
                 ]
             }
         }
-        
-        count_response = {"count": 10}
-        mock_client_instance.count = Mock(return_value=count_response)
-        
-        mock_opensearch.return_value = mock_client_instance
+        mock_client.count.return_value = {"count": 10}
         
         # 模擬 bulk 操作
         mock_bulk.return_value = (5, [])
         
-        client = get_opensearch_client()
+        # 直接使用建立的 client 而不是 get_opensearch_client()
+        opensearch_module.opensearch_client = client
         
         # 測試寫入單筆日誌
         test_log = {
@@ -123,23 +129,23 @@ class TestOpenSearchIntegration:
             "confidence": 0.85
         }
         client.update_log_analysis("test-id", test_analysis)
-        assert mock_client_instance.update.called
+        assert mock_client.update.called
     
-    @patch('lms_log_analyzer.src.opensearch_client.OpenSearch')
+    @patch.object(OpenSearchClient, '__init__', lambda self: None)
     @patch('lms_log_analyzer.src.opensearch_client.SENTENCE_MODEL')
-    def test_vector_search(self, mock_sentence_model, mock_opensearch):
+    def test_vector_search(self, mock_sentence_model):
         """測試向量搜尋功能"""
         # 模擬句子嵌入模型
         mock_sentence_model.encode.return_value.tolist.return_value = [0.1] * 384
         
-        # 模擬 OpenSearch 客戶端
-        mock_client_instance = MagicMock()
+        # 建立 OpenSearchClient 實例並手動設定 client 屬性
+        client = OpenSearchClient()
+        mock_client = MagicMock()
+        client.client = mock_client
         
-        # 使用真實的字典作為返回值
-        index_response = {"_id": "test-case-id", "_index": "analysis-cases", "_version": 1}
-        mock_client_instance.index = Mock(return_value=index_response)
-        
-        mock_client_instance.search.return_value = {
+        # 設定 mock 返回值
+        mock_client.index.return_value = {"_id": "test-case-id"}
+        mock_client.search.return_value = {
             "hits": {
                 "hits": [
                     {
@@ -153,9 +159,9 @@ class TestOpenSearchIntegration:
                 ]
             }
         }
-        mock_opensearch.return_value = mock_client_instance
         
-        client = get_opensearch_client()
+        # 直接使用建立的 client
+        opensearch_module.opensearch_client = client
         
         # 寫入測試案例
         test_case = {
@@ -180,29 +186,40 @@ class TestOpenSearchIntegration:
         assert len(similar_cases) == 1
         assert similar_cases[0]["_score"] == 0.95
     
-    @patch('lms_log_analyzer.src.opensearch_client.OpenSearch')
-    def test_stats(self, mock_opensearch):
+    @patch.object(OpenSearchClient, '__init__', lambda self: None)
+    def test_stats(self):
         """測試統計功能"""
-        # 模擬 OpenSearch 客戶端
-        mock_client_instance = MagicMock()
+        # 建立 OpenSearchClient 實例並手動設定 client 屬性
+        client = OpenSearchClient()
+        mock_client = MagicMock()
+        client.client = mock_client
         
-        # 使用 Mock 並設定 side_effect 返回真實的字典
-        count_responses = [
+        # 設定 mock 返回值
+        mock_client.count.side_effect = [
             {"count": 100},  # total_logs
             {"count": 60},   # analyzed_logs
             {"count": 20}    # total_cases
         ]
-        mock_client_instance.count = Mock(side_effect=count_responses)
         
-        mock_opensearch.return_value = mock_client_instance
+        # 直接使用建立的 client
+        opensearch_module.opensearch_client = client
         
-        client = get_opensearch_client()
         stats = client.get_stats()
         
         assert stats["total_logs"] == 100
         assert stats["analyzed_logs"] == 60
         assert stats["unanalyzed_logs"] == 40
         assert stats["total_cases"] == 20
+
+
+# 重置全域客戶端的 fixture
+@pytest.fixture(autouse=True)
+def reset_opensearch_client():
+    """在每個測試前後重置全域客戶端"""
+    original_client = opensearch_module.opensearch_client
+    opensearch_module.opensearch_client = None
+    yield
+    opensearch_module.opensearch_client = original_client
 
 
 def test_connection():
@@ -227,50 +244,66 @@ def test_indices():
         assert client is not None
 
 
+@patch.object(OpenSearchClient, '__init__', lambda self: None)
 def test_log_operations():
     """測試日誌操作的簡單版本（用於向後相容）"""
-    with patch('lms_log_analyzer.src.opensearch_client.OpenSearch') as mock_opensearch:
-        mock_client_instance = MagicMock()
-        # 使用真實的字典
-        index_response = {"_id": "test-id", "_index": "logs-alerts"}
-        mock_client_instance.index = Mock(return_value=index_response)
-        mock_opensearch.return_value = mock_client_instance
-        
-        client = get_opensearch_client()
-        log_id = client.index_log({"raw_log": "test"})
-        assert log_id == "test-id"
+    # 建立 OpenSearchClient 實例並手動設定 client 屬性
+    client = OpenSearchClient()
+    mock_client = MagicMock()
+    client.client = mock_client
+    
+    # 設定 mock 返回值
+    mock_client.index.return_value = {"_id": "test-id"}
+    
+    # 重置並設定全域客戶端
+    opensearch_module.opensearch_client = None
+    opensearch_module.opensearch_client = client
+    
+    log_id = client.index_log({"raw_log": "test"})
+    assert log_id == "test-id"
 
 
-def test_vector_search():
+@patch.object(OpenSearchClient, '__init__', lambda self: None)
+@patch('lms_log_analyzer.src.opensearch_client.SENTENCE_MODEL')
+def test_vector_search(mock_sentence_model):
     """測試向量搜尋的簡單版本（用於向後相容）"""
-    with patch('lms_log_analyzer.src.opensearch_client.OpenSearch') as mock_opensearch:
-        with patch('lms_log_analyzer.src.opensearch_client.SENTENCE_MODEL') as mock_model:
-            mock_model.encode.return_value.tolist.return_value = [0.1] * 384
-            
-            mock_client_instance = MagicMock()
-            mock_client_instance.search.return_value = {"hits": {"hits": []}}
-            mock_opensearch.return_value = mock_client_instance
-            
-            client = get_opensearch_client()
-            results = client.search_similar_cases("test", k=3)
-            assert results == []
+    mock_sentence_model.encode.return_value.tolist.return_value = [0.1] * 384
+    
+    # 建立 OpenSearchClient 實例並手動設定 client 屬性
+    client = OpenSearchClient()
+    mock_client = MagicMock()
+    client.client = mock_client
+    
+    mock_client.search.return_value = {"hits": {"hits": []}}
+    
+    # 重置並設定全域客戶端
+    opensearch_module.opensearch_client = None
+    opensearch_module.opensearch_client = client
+    
+    results = client.search_similar_cases("test", k=3)
+    assert results == []
 
 
+@patch.object(OpenSearchClient, '__init__', lambda self: None)
 def test_stats():
     """測試統計功能的簡單版本（用於向後相容）"""
-    with patch('lms_log_analyzer.src.opensearch_client.OpenSearch') as mock_opensearch:
-        mock_client_instance = MagicMock()
-        # 使用 Mock 並設定 side_effect
-        count_responses = [
-            {"count": 100}, {"count": 60}, {"count": 20}
-        ]
-        mock_client_instance.count = Mock(side_effect=count_responses)
-        mock_opensearch.return_value = mock_client_instance
-        
-        client = get_opensearch_client()
-        stats = client.get_stats()
-        assert stats["total_logs"] == 100
-        assert stats["analyzed_logs"] == 60
+    # 建立 OpenSearchClient 實例並手動設定 client 屬性
+    client = OpenSearchClient()
+    mock_client = MagicMock()
+    client.client = mock_client
+    
+    # 設定 mock 返回值
+    mock_client.count.side_effect = [
+        {"count": 100}, {"count": 60}, {"count": 20}
+    ]
+    
+    # 重置並設定全域客戶端
+    opensearch_module.opensearch_client = None
+    opensearch_module.opensearch_client = client
+    
+    stats = client.get_stats()
+    assert stats["total_logs"] == 100
+    assert stats["analyzed_logs"] == 60
 
 
 if __name__ == "__main__":
