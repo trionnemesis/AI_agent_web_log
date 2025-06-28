@@ -28,9 +28,14 @@ jobs:
         pip install pytest  # 確保 pytest 已安裝
 
     - name: Test with pytest
-      # 進入正確的子目錄，然後設定 PYTHONPATH 並執行 pytest
+      # 進入正確的子目錄
       working-directory: ./MCP_lms_log_analyzer/EDGE-codex-refactor-lms_log_analyzer_v2-into-modular-project/lms_log_analyzer
       run: |
-        # 將當前目錄(lms_log_analyzer)加入 PYTHONPATH，這樣 Python 才能找到 src/
+        # 將當前目錄加入 PYTHONPATH，這樣 Python 才能找到 src/
         export PYTHONPATH=$PYTHONPATH:.
-        pytest
+        # 新增：列出所有檔案以供除錯，確認 tests/ 目錄存在
+        echo "--- Listing files in working directory ---"
+        ls -R
+        echo "----------------------------------------"
+        # 修改：明確告訴 pytest 測試檔案在 tests/ 目錄下
+        pytest tests/
