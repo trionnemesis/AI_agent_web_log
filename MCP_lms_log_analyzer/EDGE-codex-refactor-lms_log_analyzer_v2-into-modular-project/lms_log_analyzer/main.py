@@ -8,12 +8,26 @@ from __future__ import annotations
 import argparse
 import logging
 import json
+import sys
 from pathlib import Path
 from typing import List
 
-from . import config
-from .src.log_processor import process_logs, process_opensearch_logs, continuous_process_loop
-from .src.utils import logger, save_state, STATE
+# 檢測是否作為腳本直接執行
+IS_SCRIPT = __name__ == "__main__" or not __package__
+
+if IS_SCRIPT:
+    # 當作為腳本執行時，添加當前目錄到 Python 路徑並使用絕對導入
+    current_dir = Path(__file__).parent
+    sys.path.insert(0, str(current_dir))
+    
+    import config
+    from src.log_processor import process_logs, process_opensearch_logs, continuous_process_loop
+    from src.utils import logger, save_state, STATE
+else:
+    # 當作為模組導入時使用相對導入
+    from . import config
+    from .src.log_processor import process_logs, process_opensearch_logs, continuous_process_loop
+    from .src.utils import logger, save_state, STATE
 
 # 先行設定 logging，讓所有模組共用同一組 handler。
 # 預設輸出至終端機，若有權限則同時寫入檔案。
@@ -108,7 +122,11 @@ def main():
     # 如果要求顯示統計資訊
     if args.stats:
         try:
-            from .src.opensearch_client import get_opensearch_client
+            # 根據執行模式選擇適當的導入方式
+            if IS_SCRIPT:
+                from src.opensearch_client import get_opensearch_client
+            else:
+                from .src.opensearch_client import get_opensearch_client
             client = get_opensearch_client()
             stats = client.get_stats()
             print("\n=== OpenSearch 統計資訊 ===")
